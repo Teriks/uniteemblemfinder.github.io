@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f1419">
+  <title>Pokémon UNITE Emblem Optimizer</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --accent: #f5c518;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-right: env(safe-area-inset-right, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+      --safe-left: env(safe-area-inset-left, 0px);
+      --touch-min: 44px;
+    }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      background: #0f1419;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow-x: hidden;
+      padding-left: var(--safe-left);
+      padding-right: var(--safe-right);
+    }
+    .app-main { padding-bottom: calc(1.5rem + var(--safe-bottom)); }
+    .color-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: middle; flex-shrink: 0; }
+    .c-green{background:#3cb371}.c-white{background:#e8e8e8}.c-brown{background:#8b4513}
+    .c-blue{background:#4169e1}.c-purple{background:#9370db}.c-red{background:#dc3545}
+    .c-black{background:#2d2d2d;border:1px solid #555}.c-yellow{background:#ffd700}
+    .c-pink{background:#ff69b4}.c-navy{background:#1e3a5f}.c-gray{background:#808080}
+    .emblem-pool {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+    .pool-card-body {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .col-pool > .card {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .col-pool .emblem-pool {
+      flex: 1 1 auto;
+      min-height: 12rem;
+    }
+    .pool-item { padding: 0.5rem 0.25rem; border-bottom: 1px solid #2a2f36; gap: 0.35rem; }
+    .pool-item.disabled-pool { opacity: 0.45; }
+    .pool-item .pool-name { cursor: pointer; line-height: 1.35; word-break: break-word; }
+    .pool-item .form-check-input { width: 1.15em; height: 1.15em; margin-top: 0.2em; flex-shrink: 0; }
+    .grade-toggles { display: inline-flex; gap: 6px; margin-left: auto; flex-shrink: 0; }
+    .grade-btn {
+      font-size: 0.75rem; font-weight: 700; line-height: 1;
+      padding: 0.5rem 0.55rem;
+      border-radius: 6px; border: 1px solid #555; background: #1a1f26; color: #666;
+      cursor: pointer; user-select: none;
+      min-width: var(--touch-min); min-height: var(--touch-min);
+      display: inline-flex; align-items: center; justify-content: center;
+      touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    }
+    .grade-btn.available { color: #888; border-color: #444; }
+    .grade-btn.owned.bronze { color: #1a1008; background: #cd7f32; border-color: #cd7f32; }
+    .grade-btn.owned.silver { color: #1a1a1a; background: #c0c0c0; border-color: #c0c0c0; }
+    .grade-btn.owned.gold { color: #3d3200; background: #ffd700; border-color: #ffd700; }
+    .grade-btn:not(.available) { visibility: hidden; pointer-events: none; width: 0; min-width: 0; padding: 0; border: 0; margin: 0; }
+    .grade-btn.legend { min-width: 1.75rem; min-height: 1.75rem; padding: 0.15rem; font-size: 0.7rem; vertical-align: middle; }
+    .slot-card { border-left: 4px solid var(--accent); }
+    .stat-pos { color: #6ee7a0; } .stat-neg { color: #f87171; }
+    .grade-bronze{color:#cd7f32}.grade-silver{color:#c0c0c0}.grade-gold{color:#ffd700}
+    .navbar-brand span { color: var(--accent); }
+    .site-nav { padding-top: var(--safe-top); }
+    #progressBar { display: none; }
+    .btn, .form-check-input, .form-select, .form-control { touch-action: manipulation; }
+    .form-control, .form-select { font-size: 16px; }
+    .btn-touch { min-height: var(--touch-min); }
+    .color-filters-scroll {
+      display: flex; flex-wrap: nowrap; gap: 0.35rem;
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain; padding-bottom: 0.25rem; margin-bottom: 0.5rem;
+    }
+    .color-filters-scroll .color-filter-btn { flex-shrink: 0; min-height: var(--touch-min); }
+    .grade-bulk-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.35rem; }
+    .grade-bulk-grid .btn { min-height: var(--touch-min); padding: 0.35rem 0.25rem; font-size: 0.8rem; }
+    .pool-toolbar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; }
+    .pool-toolbar .btn { min-height: var(--touch-min); }
+    .pool-io-toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+    .pool-io-toolbar .btn { min-height: var(--touch-min); }
+    #poolImportStatus { min-height: 1.25rem; }
+    #maxGradeGroup .btn { min-height: var(--touch-min); }
+    .optimize-sticky { margin-top: 1rem; }
+    .optimize-fab {
+      display: none;
+    }
+    .card-header { flex-wrap: wrap; gap: 0.35rem; }
+    #poolCount { max-width: 100%; white-space: normal; text-align: right; line-height: 1.2; }
+    @media (min-width: 992px) {
+      body {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh;
+        max-height: 100dvh;
+        overflow: hidden;
+      }
+      .site-nav { flex-shrink: 0; }
+      .app-main {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding-bottom: calc(1rem + var(--safe-bottom));
+        overflow: hidden;
+      }
+      .app-main > .row {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: 100%;
+        align-items: stretch;
+        margin-bottom: 0;
+      }
+      .col-settings,
+      .col-results {
+        min-height: 0;
+        max-height: 100%;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: calc(1.25rem + var(--safe-bottom));
+        scroll-padding-bottom: calc(1.25rem + var(--safe-bottom));
+      }
+      .col-settings .optimize-sticky {
+        margin-bottom: 0.5rem;
+      }
+      .col-pool {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        height: auto;
+        align-self: stretch;
+      }
+      .col-pool > .card {
+        flex: 1 1 auto;
+        height: 100%;
+        min-height: 0;
+        max-height: none;
+      }
+      .col-pool > .card > .card-header { flex-shrink: 0; }
+      .col-pool .pool-card-body {
+        flex: 1 1 auto;
+        overflow: hidden;
+      }
+      .col-pool .emblem-pool {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 0;
+      }
+    }
+    @media (max-width: 991.98px) {
+      .col-pool .pool-card-body {
+        min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 20rem);
+      }
+      .col-pool .emblem-pool {
+        flex: 1 1 auto;
+        min-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24rem);
+        max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 14rem);
+      }
+      .col-settings { order: 1; }
+      .col-pool { order: 2; }
+      .col-results { order: 3; }
+      .app-main { padding-bottom: calc(5.5rem + var(--safe-bottom)); }
+      .optimize-sticky { display: none; }
+      .optimize-fab {
+        display: block;
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        z-index: 1030;
+        padding: 0.65rem 0.85rem calc(0.65rem + var(--safe-bottom));
+        padding-left: calc(0.85rem + var(--safe-left));
+        padding-right: calc(0.85rem + var(--safe-right));
+        background: rgba(15, 20, 25, 0.96);
+        border-top: 1px solid #2a2f36;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+      }
+    }
+    @media (max-width: 575.98px) {
+      .navbar-brand { font-size: 1.1rem; }
+      .site-nav .text-secondary { font-size: 0.75rem; }
+      .pool-item {
+        display: grid !important;
+        grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto;
+        align-items: center;
+      }
+      .pool-item .pool-cb { grid-row: 1 / 3; align-self: start; margin-top: 0.35rem; }
+      .pool-item .pool-name { grid-column: 2; }
+      .pool-item .grade-toggles { grid-column: 2; margin-left: 0; justify-content: flex-start; }
+      .card-body { padding: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-2 mb-md-3 site-nav">
+  <div class="container-fluid">
+    <div class="d-flex flex-column flex-sm-row align-items-sm-center justify-content-sm-between gap-1 w-100">
+      <span class="navbar-brand mb-0 h1 fs-5 fs-md-4">Pokémon UNITE <span>Emblem Optimizer</span></span>
+      <small class="text-secondary">257 Pokémon · data from <a href="https://unite-db.com/boost-emblems" class="text-secondary" target="_blank" rel="noopener">UniteDB</a></small>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid app-main">
+  <div class="row g-3">
+    <div class="col-12 col-lg-4 col-settings">
+      <div class="card bg-dark border-secondary">
+        <div class="card-header">Settings</div>
+        <div class="card-body">
+          <label class="form-label">Max emblem grade</label>
+          <div class="btn-group w-100 mb-3 flex-wrap" role="group" id="maxGradeGroup">
+            <input type="radio" class="btn-check" name="maxGrade" id="gBronze" value="bronze">
+            <label class="btn btn-outline-warning flex-fill btn-touch" for="gBronze">Bronze</label>
+            <input type="radio" class="btn-check" name="maxGrade" id="gSilver" value="silver">
+            <label class="btn btn-outline-secondary flex-fill btn-touch" for="gSilver">Silver</label>
+            <input type="radio" class="btn-check" name="maxGrade" id="gGold" value="gold" checked>
+            <label class="btn btn-outline-warning flex-fill btn-touch" for="gGold">Gold</label>
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="mixedGrades" checked>
+            <label class="form-check-label" for="mixedGrades">Allow mixed grades (B/S/G) for best fit</label>
+          </div>
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="colorBonuses" checked>
+            <label class="form-check-label" for="colorBonuses">Include color set bonuses in scoring</label>
+          </div>
+          <label class="form-label">Optimization mode</label>
+          <select class="form-select mb-3" id="optMode">
+            <option value="maximize">Maximize stats (protect others)</option>
+            <option value="target">Match target stat totals</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card bg-dark border-secondary mt-3" id="maximizePanel">
+        <div class="card-header">Maximize — priorities &amp; limits</div>
+        <div class="card-body small" id="maximizeInputs"></div>
+      </div>
+
+      <div class="card bg-dark border-secondary mt-3 d-none" id="targetPanel">
+        <div class="card-header">Target — desired totals (10 slots)</div>
+        <div class="card-body small" id="targetInputs"></div>
+      </div>
+
+      <div class="optimize-sticky">
+        <button type="button" class="btn btn-warning w-100 fw-bold btn-touch py-2" id="btnOptimize">Optimize Loadout</button>
+        <div class="progress mt-2" id="progressBar">
+          <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width:100%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4 col-pool">
+      <div class="card bg-dark border-secondary h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Your emblem pool</span>
+          <span class="badge text-bg-secondary" id="poolCount">0 / 0</span>
+        </div>
+        <div class="card-body pool-card-body">
+          <input type="search" class="form-control mb-2" id="poolSearch" placeholder="Search Pokémon…" autocomplete="off" enterkeyhint="search">
+          <div class="pool-io-toolbar mb-2">
+            <button type="button" class="btn btn-outline-info btn-sm" id="poolSave">Save JSON</button>
+            <button type="button" class="btn btn-outline-info btn-sm" id="poolLoad">Load JSON</button>
+          </div>
+          <input type="file" id="poolFileInput" accept=".json,application/json" class="d-none">
+          <div id="poolImportStatus" class="small mb-2" role="status" aria-live="polite"></div>
+          <div class="pool-toolbar mb-2">
+            <button type="button" class="btn btn-outline-light btn-sm" id="poolAll">All</button>
+            <button type="button" class="btn btn-outline-light btn-sm" id="poolNone">None</button>
+            <button type="button" class="btn btn-outline-light btn-sm" id="poolInvert">Invert</button>
+          </div>
+          <p class="small text-secondary mb-1">Tap <span class="grade-btn owned bronze legend">B</span> <span class="grade-btn owned silver legend">S</span> <span class="grade-btn owned gold legend">G</span> for grades you own:</p>
+          <div class="grade-bulk-grid mb-2">
+            <button type="button" class="btn btn-outline-warning btn-sm" id="gradeOwnBronze">+B</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="gradeOwnSilver">+S</button>
+            <button type="button" class="btn btn-outline-warning btn-sm" id="gradeOwnGold">+G</button>
+            <button type="button" class="btn btn-outline-light btn-sm" id="gradeOwnAll">+All</button>
+            <button type="button" class="btn btn-outline-danger btn-sm" id="gradeOwnClear">Clear</button>
+          </div>
+          <div class="color-filters-scroll" id="colorFilters"></div>
+          <div class="emblem-pool" id="emblemPool"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-lg-4 col-results">
+      <div class="card bg-dark border-secondary" id="resultsCard">
+        <div class="card-header">Optimized loadout</div>
+        <div class="card-body" id="resultsBody">
+          <p class="text-secondary mb-0">Configure settings, select your emblems, and click Optimize.</p>
+        </div>
+      </div>
+      <div class="card bg-dark border-secondary mt-3">
+        <div class="card-header">Total stats &amp; color bonuses</div>
+        <div class="card-body" id="totalsBody"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="optimize-fab" aria-hidden="false">
+  <button type="button" class="btn btn-warning w-100 fw-bold btn-touch py-3" id="btnOptimizeFab">Optimize Loadout</button>
+  <div class="progress mt-2" id="progressBarFab" style="display:none">
+    <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width:100%"></div>
+  </div>
+</div>
+
+<script>
+const EMBLEMS = [{"n":"Abra","c":["purple"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Aerodactyl","c":["brown","white"],"g":{"gold":{"def":-5.0,"spd":35.0},"silver":{"def":-4.0,"spd":28.0},"bronze":{"def":-3.0,"spd":21.0}}},{"n":"Aipom","c":["white"],"g":{"gold":{"def":-5.0,"crit":0.6},"silver":{"def":-4.0,"crit":0.5},"bronze":{"def":-3.0,"crit":0.3}}},{"n":"Alakazam","c":["purple"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Ampharos","c":["yellow"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Arbok","c":["black"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Arcanine","c":["red"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Ariados","c":["black"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Articuno","c":["blue","white"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Azumarill","c":["blue","pink"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Bayleef","c":["green"],"g":{"gold":{"def":5.0,"spd":-35.0},"silver":{"def":4.0,"spd":-28.0},"bronze":{"def":3.0,"spd":-21.0}}},{"n":"Beedrill","c":["green","black"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Bellossom","c":["green"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Bellsprout","c":["green"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Blastoise","c":["blue"],"g":{"gold":{"spatk":3.0,"crit":-0.6},"silver":{"spatk":2.4,"crit":-0.5},"bronze":{"spatk":1.8,"crit":-0.3}}},{"n":"Blissey","c":["white"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Bulbasaur","c":["green"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Butterfree","c":["green","white"],"g":{"gold":{"atk":-2.0,"def":5.0},"silver":{"atk":-1.6,"def":4.0},"bronze":{"atk":-1.2,"def":3.0}}},{"n":"Caterpie","c":["green"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Celebi","c":["green","purple"],"g":{"gold":{"hp":-50.0,"cdr":0.6},"silver":{"hp":-40.0,"cdr":0.5},"bronze":{"hp":-30.0,"cdr":0.3}}},{"n":"Chansey","c":["white"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Charizard","c":["red"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Charmander","c":["red"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Charmeleon","c":["red"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Chicorita","c":["green"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Chinchou","c":["yellow"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Clefable","c":["pink"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Clefairy","c":["pink"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Cleffa","c":["pink"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Cloyster","c":["blue"],"g":{"gold":{"def":5.0,"spdef":-5.0},"silver":{"def":4.0,"spdef":-4.0},"bronze":{"def":3.0,"spdef":-3.0}}},{"n":"Corsola","c":["blue"],"g":{"gold":{"atk":-2.0,"spdef":5.0},"silver":{"atk":-1.6,"spdef":4.0},"bronze":{"atk":-1.2,"spdef":3.0}}},{"n":"Crobat","c":["black"],"g":{"gold":{"spatk":-3.0,"spd":35.0},"silver":{"spatk":-2.4,"spd":28.0},"bronze":{"spatk":-1.8,"spd":21.0}}},{"n":"Croconaw","c":["blue"],"g":{"gold":{"def":5.0,"spdef":-5.0},"silver":{"def":4.0,"spdef":-4.0},"bronze":{"def":3.0,"spdef":-3.0}}},{"n":"Cubone","c":["brown"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Cyndaquil","c":["red"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Delibird","c":["blue","white"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Dewgong","c":["blue"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Diglett","c":["brown"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Dodrio","c":["white"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Doduo","c":["white"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Donphan","c":["brown"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Dragonair","c":["navy"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Dragonite","c":["navy","white"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Dratini","c":["navy"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Drowzee","c":["purple"],"g":{"gold":{"spdef":5.0,"spd":-35.0},"silver":{"spdef":4.0,"spd":-28.0},"bronze":{"spdef":3.0,"spd":-21.0}}},{"n":"Dugtrio","c":["brown"],"g":{"gold":{"def":-5.0,"spd":35.0},"silver":{"def":-4.0,"spd":28.0},"bronze":{"def":-3.0,"spd":21.0}}},{"n":"Dunsparce","c":["white"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Eevee","c":["white"],"g":{"gold":{"spatk":-3.0,"spdef":5.0},"silver":{"spatk":-2.4,"spdef":4.0},"bronze":{"spatk":-1.8,"spdef":3.0}}},{"n":"Ekans","c":["black"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Electabuzz","c":["yellow"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Electrode","c":["yellow"],"g":{"gold":{"atk":-2.0,"spd":35.0},"silver":{"atk":-1.6,"spd":28.0},"bronze":{"atk":-1.2,"spd":21.0}}},{"n":"Elekid","c":["yellow"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Entei","c":["red"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Espeon","c":["purple"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Exeggcute","c":["green"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Exeggutor","c":["green","purple"],"g":{"gold":{"spatk":3.0,"spd":-35.0},"silver":{"spatk":2.4,"spd":-28.0},"bronze":{"spatk":1.8,"spd":-21.0}}},{"n":"Farfetch'd","c":["white"],"g":{"gold":{"hp":-50.0,"crit":0.6},"silver":{"hp":-40.0,"crit":0.5},"bronze":{"hp":-30.0,"crit":0.3}}},{"n":"Fearow","c":["white"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Feraligatr","c":["blue"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Flaaffy","c":["yellow"],"g":{"gold":{"spatk":3.0,"crit":-0.6},"silver":{"spatk":2.4,"crit":-0.5},"bronze":{"spatk":1.8,"crit":-0.3}}},{"n":"Flareon","c":["red"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Floragato","c":["green"],"g":{"gold":{"def":-5.0,"spd":35.0}}},{"n":"Forretress","c":["gray"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Furret","c":["white"],"g":{"gold":{"spatk":-3.0,"crit":0.6},"silver":{"spatk":-2.4,"crit":0.5},"bronze":{"spatk":-1.8,"crit":0.3}}},{"n":"Gastly","c":["purple"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Gengar","c":["purple","black"],"g":{"gold":{"atk":-2.0,"spd":35.0},"silver":{"atk":-1.6,"spd":28.0},"bronze":{"atk":-1.2,"spd":21.0}}},{"n":"Geodude","c":["brown"],"g":{"gold":{"def":5.0,"spdef":-5.0},"silver":{"def":4.0,"spdef":-4.0},"bronze":{"def":3.0,"spdef":-3.0}}},{"n":"Girafarig","c":["purple"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Gligar","c":["brown"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Gloom","c":["green"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Golbat","c":["black"],"g":{"gold":{"spdef":-5.0,"spd":35.0},"silver":{"spdef":-4.0,"spd":28.0},"bronze":{"spdef":-3.0,"spd":21.0}}},{"n":"Goldeen","c":["blue"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Golduck","c":["blue"],"g":{"gold":{"atk":-2.0,"spdef":5.0},"silver":{"atk":-1.6,"spdef":4.0},"bronze":{"atk":-1.2,"spdef":3.0}}},{"n":"Golem","c":["brown"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Granbull","c":["pink"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Graveler","c":["brown"],"g":{"gold":{"def":5.0,"crit":-0.6},"silver":{"def":4.0,"crit":-0.5},"bronze":{"def":3.0,"crit":-0.3}}},{"n":"Grimer","c":["black"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Growlithe","c":["red"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Gyarados","c":["blue","white"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Haunter","c":["purple"],"g":{"gold":{"def":-5.0,"spd":35.0},"silver":{"def":-4.0,"spd":28.0},"bronze":{"def":-3.0,"spd":21.0}}},{"n":"Heracross","c":["brown"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Hitmonchan","c":["brown"],"g":{"gold":{"spatk":-3.0,"spdef":5.0},"silver":{"spatk":-2.4,"spdef":4.0},"bronze":{"spatk":-1.8,"spdef":3.0}}},{"n":"Hitmonlee","c":["brown"],"g":{"gold":{"spatk":-3.0,"spdef":5.0},"silver":{"spatk":-2.4,"spdef":4.0},"bronze":{"spatk":-1.8,"spdef":3.0}}},{"n":"Hitmontop","c":["brown"],"g":{"gold":{"spatk":-3.0,"spdef":5.0},"silver":{"spatk":-2.4,"spdef":4.0},"bronze":{"spatk":-1.8,"spdef":3.0}}},{"n":"Ho-oh","c":["brown","white"],"g":{"gold":{"atk":3.0,"spatk":-4.5},"silver":{"atk":2.4,"spatk":-3.6},"bronze":{"atk":1.8,"spatk":-2.7}}},{"n":"Hoothoot","c":["white"],"g":{"gold":{"atk":-2.0,"crit":0.6},"silver":{"atk":-1.6,"crit":0.5},"bronze":{"atk":-1.2,"crit":0.3}}},{"n":"Hoppip","c":["green"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Horsea","c":["blue"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Houndoom","c":["red","black"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Houndour","c":["red"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Hypno","c":["purple"],"g":{"gold":{"spdef":5.0,"crit":-0.6},"silver":{"spdef":4.0,"crit":-0.5},"bronze":{"spdef":3.0,"crit":-0.3}}},{"n":"Igglybuff","c":["pink"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Ivysaur","c":["green"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Jigglypuff","c":["pink"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Jolteon","c":["yellow"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Jumpluff","c":["green","white"],"g":{"gold":{"atk":-2.0,"spd":35.0},"silver":{"atk":-1.6,"spd":28.0},"bronze":{"atk":-1.2,"spd":21.0}}},{"n":"Jynx","c":["blue","purple"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Kabuto","c":["brown"],"g":{"gold":{"hp":-50.0,"crit":0.6},"silver":{"hp":-40.0,"crit":0.5},"bronze":{"hp":-30.0,"crit":0.3}}},{"n":"Kabutops","c":["brown","blue"],"g":{"gold":{"spatk":-3.0,"crit":0.6},"silver":{"spatk":-2.4,"crit":0.5},"bronze":{"spatk":-1.8,"crit":0.3}}},{"n":"Kadabra","c":["purple"],"g":{"gold":{"spatk":3.0,"crit":-0.6},"silver":{"spatk":2.4,"crit":-0.5},"bronze":{"spatk":1.8,"crit":-0.3}}},{"n":"Kakuna","c":["green"],"g":{"gold":{"spdef":5.0,"spd":-35.0},"silver":{"spdef":4.0,"spd":-28.0},"bronze":{"spdef":3.0,"spd":-21.0}}},{"n":"Kangaskhan","c":["white"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Kingdra","c":["blue","navy"],"g":{"gold":{"spatk":3.0,"spd":-35.0},"silver":{"spatk":2.4,"spd":-28.0},"bronze":{"spatk":1.8,"spd":-21.0}}},{"n":"Kingler","c":["blue"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Koffing","c":["purple"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Krabby","c":["blue"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Lanturn","c":["yellow"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Lapras","c":["blue"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Larvitar","c":["brown"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Latias","c":["navy","purple"],"g":{"gold":{"hp":-50.0,"spdef":5.0}}},{"n":"Latios","c":["navy","purple"],"g":{"gold":{"spatk":3.0,"def":-5.0}}},{"n":"Ledian","c":["green"],"g":{"gold":{"atk":-2.0,"spdef":5.0},"silver":{"atk":-1.6,"spdef":4.0},"bronze":{"atk":-1.2,"spdef":3.0}}},{"n":"Ledyba","c":["green"],"g":{"gold":{"spdef":5.0,"crit":-0.6},"silver":{"spdef":4.0,"crit":-0.5},"bronze":{"spdef":3.0,"crit":-0.3}}},{"n":"Lickitung","c":["white"],"g":{"gold":{"def":5.0,"spd":-35.0},"silver":{"def":4.0,"spd":-28.0},"bronze":{"def":3.0,"spd":-21.0}}},{"n":"Lugia","c":["green","white"],"g":{"gold":{"atk":-3.0,"spatk":4.5},"silver":{"atk":-2.4,"spatk":3.6},"bronze":{"atk":-1.8,"spatk":2.7}}},{"n":"Machamp","c":["brown"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Machoke","c":["brown"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Machop","c":["brown"],"g":{"gold":{"atk":2.0,"spd":-35.0},"silver":{"atk":1.6,"spd":-28.0},"bronze":{"atk":1.2,"spd":-21.0}}},{"n":"Magby","c":["red"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Magcargo","c":["red"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Magikarp","c":["blue"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Magmar","c":["red"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Magnemite","c":["yellow"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Magneton","c":["yellow"],"g":{"gold":{"atk":-2.0,"def":5.0},"silver":{"atk":-1.6,"def":4.0},"bronze":{"atk":-1.2,"def":3.0}}},{"n":"Mankey","c":["brown"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Mantine","c":["blue","white"],"g":{"gold":{"atk":-2.0,"spdef":5.0},"silver":{"atk":-1.6,"spdef":4.0},"bronze":{"atk":-1.2,"spdef":3.0}}},{"n":"Mareep","c":["yellow"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Marill","c":["pink"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Marowak","c":["brown"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Meganium","c":["green"],"g":{"gold":{"atk":-2.0,"def":5.0},"silver":{"atk":-1.6,"def":4.0},"bronze":{"atk":-1.2,"def":3.0}}},{"n":"Meowscarada","c":["green","black"],"g":{"gold":{"hp":-50.0,"spd":35.0}}},{"n":"Meowth","c":["white"],"g":{"gold":{"def":-5.0,"crit":0.6},"silver":{"def":-4.0,"crit":0.5},"bronze":{"def":-3.0,"crit":0.3}}},{"n":"Metapod","c":["green"],"g":{"gold":{"def":5.0,"spd":-35.0},"silver":{"def":4.0,"spd":-28.0},"bronze":{"def":3.0,"spd":-21.0}}},{"n":"Mew","c":["purple"],"g":{"gold":{"hp":-50.0,"cdr":0.6},"silver":{"hp":-40.0,"cdr":0.5},"bronze":{"hp":-30.0,"cdr":0.3}}},{"n":"Mewtwo","c":["purple"],"g":{"gold":{"hp":-50.0,"cdr":0.6},"silver":{"hp":-40.0,"cdr":0.5},"bronze":{"hp":-30.0,"cdr":0.3}}},{"n":"Miltank","c":["white"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Miraidon","c":["yellow","navy"],"g":{"gold":{"hp":-50.0,"spd":35.0}}},{"n":"Misdreavus","c":["purple"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Moltres","c":["red","white"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Mr. Mime","c":["purple","pink"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Muk","c":["black"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Murkrow","c":["black"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Natu","c":["purple"],"g":{"gold":{"spd":35.0,"crit":-0.6},"silver":{"spd":28.0,"crit":-0.5},"bronze":{"spd":21.0,"crit":-0.3}}},{"n":"Nidoking","c":["purple","brown"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Nidoqueen","c":["purple","brown"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Nidoran\u2640","c":["purple"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Nidoran\u2642","c":["purple"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Nidorina","c":["purple"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Nidorino","c":["purple"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Ninetales","c":["red"],"g":{"gold":{"atk":-2.0,"spdef":5.0},"silver":{"atk":-1.6,"spdef":4.0},"bronze":{"atk":-1.2,"spdef":3.0}}},{"n":"Noctowl","c":["white"],"g":{"gold":{"def":-5.0,"crit":0.6},"silver":{"def":-4.0,"crit":0.5},"bronze":{"def":-3.0,"crit":0.3}}},{"n":"Octillery","c":["blue"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Oddish","c":["green"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Omanyte","c":["brown"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Omastar","c":["brown","blue"],"g":{"gold":{"spatk":3.0,"spd":-35.0},"silver":{"spatk":2.4,"spd":-28.0},"bronze":{"spatk":1.8,"spd":-21.0}}},{"n":"Onix","c":["brown"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Paras","c":["green"],"g":{"gold":{"def":5.0,"crit":-0.6},"silver":{"def":4.0,"crit":-0.5},"bronze":{"def":3.0,"crit":-0.3}}},{"n":"Parasect","c":["green"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Persian","c":["white"],"g":{"gold":{"def":-5.0,"crit":0.6},"silver":{"def":-4.0,"crit":0.5},"bronze":{"def":-3.0,"crit":0.3}}},{"n":"Phanpy","c":["brown"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Pichu","c":["yellow"],"g":{"gold":{"atk":-2.0,"spd":35.0},"silver":{"atk":-1.6,"spd":28.0},"bronze":{"atk":-1.2,"spd":21.0}}},{"n":"Pidgeot","c":["white"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Pidgeotto","c":["white"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Pidgey","c":["white"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Pikachu","c":["yellow"],"g":{"gold":{"spdef":5.0,"crit":-0.6},"silver":{"spdef":4.0,"crit":-0.5},"bronze":{"spdef":3.0,"crit":-0.3}}},{"n":"Piloswine","c":["blue","brown"],"g":{"gold":{"hp":50.0,"crit":-0.6},"silver":{"hp":40.0,"crit":-0.5},"bronze":{"hp":30.0,"crit":-0.3}}},{"n":"Pineco","c":["green"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Pinsir","c":["green"],"g":{"gold":{"spdef":-5.0,"crit":0.6},"silver":{"spdef":-4.0,"crit":0.5},"bronze":{"spdef":-3.0,"crit":0.3}}},{"n":"Politoed","c":["blue"],"g":{"gold":{"atk":-2.0,"spdef":5.0},"silver":{"atk":-1.6,"spdef":4.0},"bronze":{"atk":-1.2,"spdef":3.0}}},{"n":"Poliwag","c":["blue"],"g":{"gold":{"def":-5.0,"spdef":5.0},"silver":{"def":-4.0,"spdef":4.0},"bronze":{"def":-3.0,"spdef":3.0}}},{"n":"Poliwhirl","c":["blue"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Poliwrath","c":["blue","brown"],"g":{"gold":{"spatk":-3.0,"spdef":5.0},"silver":{"spatk":-2.4,"spdef":4.0},"bronze":{"spatk":-1.8,"spdef":3.0}}},{"n":"Ponyta","c":["red"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Porygon","c":["white"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Porygon2","c":["white"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Primeape","c":["brown"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Psyduck","c":["blue"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Pupitar","c":["brown"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Quagsire","c":["blue","brown"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Quilava","c":["red"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Qwilfish","c":["black"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Raichu","c":["yellow"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Raikou","c":["yellow"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Rapidash","c":["red"],"g":{"gold":{"atk":2.0,"def":-5.0},"silver":{"atk":1.6,"def":-4.0},"bronze":{"atk":1.2,"def":-3.0}}},{"n":"Raticate","c":["white"],"g":{"gold":{"spatk":-3.0,"def":5.0},"silver":{"spatk":-2.4,"def":4.0},"bronze":{"spatk":-1.8,"def":3.0}}},{"n":"Rattata","c":["white"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Remoraid","c":["blue"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Rhydon","c":["brown"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Rhyhorn","c":["brown"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Sandshrew","c":["brown"],"g":{"gold":{"spdef":-5.0,"crit":0.6},"silver":{"spdef":-4.0,"crit":0.5},"bronze":{"spdef":-3.0,"crit":0.3}}},{"n":"Sandslash","c":["brown"],"g":{"gold":{"spatk":-3.0,"crit":0.6},"silver":{"spatk":-2.4,"crit":0.5},"bronze":{"spatk":-1.8,"crit":0.3}}},{"n":"Scizor","c":["gray"],"g":{"gold":{"spdef":-5.0,"crit":0.6},"silver":{"spdef":-4.0,"crit":0.5},"bronze":{"spdef":-3.0,"crit":0.3}}},{"n":"Scyther","c":["green","white"],"g":{"gold":{"def":-5.0,"crit":0.6},"silver":{"def":-4.0,"crit":0.5},"bronze":{"def":-3.0,"crit":0.3}}},{"n":"Seadra","c":["blue"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Seaking","c":["blue"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Seel","c":["blue"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Sentret","c":["white"],"g":{"gold":{"spdef":-5.0,"crit":0.6},"silver":{"spdef":-4.0,"crit":0.5},"bronze":{"spdef":-3.0,"crit":0.3}}},{"n":"Shellder","c":["blue"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Shuckle","c":["brown"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Skarmory","c":["gray"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Skiploom","c":["green"],"g":{"gold":{"spatk":-3.0,"spd":35.0},"silver":{"spatk":-2.4,"spd":28.0},"bronze":{"spatk":-1.8,"spd":21.0}}},{"n":"Slowbro","c":["blue","purple"],"g":{"gold":{"def":5.0,"spd":-35.0},"silver":{"def":4.0,"spd":-28.0},"bronze":{"def":3.0,"spd":-21.0}}},{"n":"Slowking","c":["blue","purple"],"g":{"gold":{"spdef":5.0,"spd":-35.0},"silver":{"spdef":4.0,"spd":-28.0},"bronze":{"spdef":3.0,"spd":-21.0}}},{"n":"Slowpoke","c":["blue"],"g":{"gold":{"def":5.0,"spd":-35.0},"silver":{"def":4.0,"spd":-28.0},"bronze":{"def":3.0,"spd":-21.0}}},{"n":"Slugma","c":["red"],"g":{"gold":{"atk":-2.0,"def":5.0},"silver":{"atk":-1.6,"def":4.0},"bronze":{"atk":-1.2,"def":3.0}}},{"n":"Smeargle","c":["white"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Smoochum","c":["purple"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Sneasel","c":["black"],"g":{"gold":{"hp":-50.0,"crit":0.6},"silver":{"hp":-40.0,"crit":0.5},"bronze":{"hp":-30.0,"crit":0.3}}},{"n":"Snorlax","c":["white"],"g":{"gold":{"spdef":5.0,"crit":-0.6},"silver":{"spdef":4.0,"crit":-0.5},"bronze":{"spdef":3.0,"crit":-0.3}}},{"n":"Snubbull","c":["pink"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Spearow","c":["white"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Spinarak","c":["green"],"g":{"gold":{"atk":2.0,"crit":-0.6},"silver":{"atk":1.6,"crit":-0.5},"bronze":{"atk":1.2,"crit":-0.3}}},{"n":"Sprigatito","c":["green"],"g":{"gold":{"spdef":-5.0,"spd":35.0}}},{"n":"Squirtle","c":["blue"],"g":{"gold":{"hp":-50.0,"spatk":3.0},"silver":{"hp":-40.0,"spatk":2.4},"bronze":{"hp":-30.0,"spatk":1.8}}},{"n":"Stantler","c":["white"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Starmie","c":["blue","purple"],"g":{"gold":{"atk":-2.0,"spd":35.0},"silver":{"atk":-1.6,"spd":28.0},"bronze":{"atk":-1.2,"spd":21.0}}},{"n":"Staryu","c":["blue"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Steelix","c":["gray","brown"],"g":{"gold":{"def":5.0,"spdef":-5.0},"silver":{"def":4.0,"spdef":-4.0},"bronze":{"def":3.0,"spdef":-3.0}}},{"n":"Sudowoodo","c":["brown"],"g":{"gold":{"def":5.0,"crit":-0.6},"silver":{"def":4.0,"crit":-0.5},"bronze":{"def":3.0,"crit":-0.3}}},{"n":"Suicune","c":["blue"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Sunflora","c":["green"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Sunkern","c":["green"],"g":{"gold":{"hp":50.0,"def":-5.0},"silver":{"hp":40.0,"def":-4.0},"bronze":{"hp":30.0,"def":-3.0}}},{"n":"Swinub","c":["blue"],"g":{"gold":{"hp":50.0,"spdef":-5.0},"silver":{"hp":40.0,"spdef":-4.0},"bronze":{"hp":30.0,"spdef":-3.0}}},{"n":"Tangela","c":["green"],"g":{"gold":{"def":5.0,"spdef":-5.0},"silver":{"def":4.0,"spdef":-4.0},"bronze":{"def":3.0,"spdef":-3.0}}},{"n":"Tauros","c":["white"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Teddiursa","c":["white"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Tentacool","c":["blue"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Tentacruel","c":["blue","black"],"g":{"gold":{"spdef":5.0,"crit":-0.6},"silver":{"spdef":4.0,"crit":-0.5},"bronze":{"spdef":3.0,"crit":-0.3}}},{"n":"Togepi","c":["pink"],"g":{"gold":{"spdef":5.0,"spd":-35.0},"silver":{"spdef":4.0,"spd":-28.0},"bronze":{"spdef":3.0,"spd":-21.0}}},{"n":"Togetic","c":["pink","white"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Totodile","c":["blue"],"g":{"gold":{"hp":-50.0,"def":5.0},"silver":{"hp":-40.0,"def":4.0},"bronze":{"hp":-30.0,"def":3.0}}},{"n":"Typhlosion","c":["red"],"g":{"gold":{"spatk":3.0,"spdef":-5.0},"silver":{"spatk":2.4,"spdef":-4.0},"bronze":{"spatk":1.8,"spdef":-3.0}}},{"n":"Tyranitar","c":["brown","black"],"g":{"gold":{"hp":50.0,"crit":-0.6},"silver":{"hp":40.0,"crit":-0.5},"bronze":{"hp":30.0,"crit":-0.3}}},{"n":"Tyrogue","c":["brown"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Umbreon","c":["black"],"g":{"gold":{"spatk":-3.0,"spdef":5.0},"silver":{"spatk":-2.4,"spdef":4.0},"bronze":{"spatk":-1.8,"spdef":3.0}}},{"n":"Unown","c":["purple"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Ursaring","c":["white"],"g":{"gold":{"atk":2.0,"spd":-35.0},"silver":{"atk":1.6,"spd":-28.0},"bronze":{"atk":1.2,"spd":-21.0}}},{"n":"Vaporeon","c":["blue"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Venomoth","c":["green","black"],"g":{"gold":{"hp":50.0,"crit":-0.6},"silver":{"hp":40.0,"crit":-0.5},"bronze":{"hp":30.0,"crit":-0.3}}},{"n":"Venonat","c":["green"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Venusaur","c":["green"],"g":{"gold":{"atk":-2.0,"spatk":3.0},"silver":{"atk":-1.6,"spatk":2.4},"bronze":{"atk":-1.2,"spatk":1.8}}},{"n":"Victreebel","c":["green","black"],"g":{"gold":{"atk":2.0,"spdef":-5.0},"silver":{"atk":1.6,"spdef":-4.0},"bronze":{"atk":1.2,"spdef":-3.0}}},{"n":"Vileplume","c":["green","black"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Voltorb","c":["yellow"],"g":{"gold":{"hp":-50.0,"spd":35.0},"silver":{"hp":-40.0,"spd":28.0},"bronze":{"hp":-30.0,"spd":21.0}}},{"n":"Vulpix","c":["red"],"g":{"gold":{"hp":-50.0,"spdef":5.0},"silver":{"hp":-40.0,"spdef":4.0},"bronze":{"hp":-30.0,"spdef":3.0}}},{"n":"Wartortle","c":["blue"],"g":{"gold":{"spatk":3.0,"def":-5.0},"silver":{"spatk":2.4,"def":-4.0},"bronze":{"spatk":1.8,"def":-3.0}}},{"n":"Weedle","c":["green"],"g":{"gold":{"def":-5.0,"spdef":5.0},"silver":{"def":-4.0,"spdef":4.0},"bronze":{"def":-3.0,"spdef":3.0}}},{"n":"Weepinbell","c":["green"],"g":{"gold":{"hp":-50.0,"atk":2.0},"silver":{"hp":-40.0,"atk":1.6},"bronze":{"hp":-30.0,"atk":1.2}}},{"n":"Weezing","c":["purple"],"g":{"gold":{"def":5.0,"spd":-35.0},"silver":{"def":4.0,"spd":-28.0},"bronze":{"def":3.0,"spd":-21.0}}},{"n":"Wigglytuff","c":["pink"],"g":{"gold":{"hp":50.0,"spd":-35.0},"silver":{"hp":40.0,"spd":-28.0},"bronze":{"hp":30.0,"spd":-21.0}}},{"n":"Wobbuffet","c":["purple"],"g":{"gold":{"hp":50.0,"crit":-0.6},"silver":{"hp":40.0,"crit":-0.5},"bronze":{"hp":30.0,"crit":-0.3}}},{"n":"Wooper","c":["blue"],"g":{"gold":{"hp":50.0,"spatk":-3.0},"silver":{"hp":40.0,"spatk":-2.4},"bronze":{"hp":30.0,"spatk":-1.8}}},{"n":"Xatu","c":["purple","white"],"g":{"gold":{"def":-5.0,"spd":35.0},"silver":{"def":-4.0,"spd":28.0},"bronze":{"def":-3.0,"spd":21.0}}},{"n":"Yanma","c":["green"],"g":{"gold":{"def":-5.0,"spd":35.0},"silver":{"def":-4.0,"spd":28.0},"bronze":{"def":-3.0,"spd":21.0}}},{"n":"Zacian","c":["gray","pink"],"g":{"gold":{"atk":2.0,"spatk":-3.0},"silver":{"atk":1.6,"spatk":-2.4},"bronze":{"atk":1.2,"spatk":-1.8}}},{"n":"Zapdos","c":["yellow","white"],"g":{"gold":{"hp":50.0,"atk":-2.0},"silver":{"hp":40.0,"atk":-1.6},"bronze":{"hp":30.0,"atk":-1.2}}},{"n":"Zubat","c":["black"],"g":{"gold":{"atk":-2.0,"spd":35.0},"silver":{"atk":-1.6,"spd":28.0},"bronze":{"atk":-1.2,"spd":21.0}}}];
+</script>
+<script>
+const STATS = [
+  { id: 'hp', label: 'HP', scale: 1 },
+  { id: 'atk', label: 'Attack', scale: 1 },
+  { id: 'spatk', label: 'Sp. Atk', scale: 1 },
+  { id: 'def', label: 'Defense', scale: 1 },
+  { id: 'spdef', label: 'Sp. Def', scale: 1 },
+  { id: 'spd', label: 'Move Speed', scale: 0.1 },
+  { id: 'crit', label: 'Crit Rate %', scale: 10 },
+  { id: 'cdr', label: 'Cooldown %', scale: 10 },
+];
+
+const GRADE_ORDER = ['bronze', 'silver', 'gold'];
+const COLOR_LABELS = {
+  green: 'Green (Sp.Atk)', white: 'White (HP)', brown: 'Brown (Atk)',
+  blue: 'Blue (Def)', purple: 'Purple (Sp.Def)', red: 'Red (Atk Spd)',
+  black: 'Black (CDR)', yellow: 'Yellow (Move Spd)', pink: 'Pink (Hindrance)',
+  navy: 'Navy (Unite)', gray: 'Gray (Dmg Red.)',
+};
+
+const COLOR_THRESHOLDS = {"green":[2,4,6],"yellow":[3,5,7],"red":[3,5,7],"blue":[2,4,6],"white":[2,4,6],"black":[3,5,7],"brown":[2,4,6],"purple":[2,4,6],"pink":[3,5,7],"navy":[3,5,7],"gray":[3,5,7]};
+
+const COLOR_BONUS = {"green":[1,2,4],"yellow":[4,6,12],"red":[2,4,8],"blue":[2,4,8],"white":[1,2,4],"black":[1,2,4],"brown":[1,2,4],"purple":[2,4,8],"pink":[-4,-8,-16],"navy":[-1,-2,-4],"gray":[-3,-6,-12]};
+
+const COLOR_BONUS_STAT = {"green":"spatk%","yellow":"msp%","red":"atkspd%","blue":"def%","white":"hp%","black":"cdr%","brown":"atk%","purple":"spdef%","pink":"hind%","navy":"unite%","gray":"dmgflat"};
+
+let poolSelected = new Set();
+/** @type {Map<number, Set<string>>} emIdx -> owned grades (bronze|silver|gold) */
+let ownedGrades = new Map();
+
+const GRADE_SHORT = { bronze: 'B', silver: 'S', gold: 'G' };
+const POOL_SAVE_VERSION = 1;
+const EMBLEM_INDEX_BY_NAME = new Map(EMBLEMS.map((e, i) => [e.n, i]));
+
+function emblemGradesAvailable(emIdx) {
+  const g = EMBLEMS[emIdx]?.g;
+  return g ? GRADE_ORDER.filter(gr => g[gr]) : [];
+}
+
+function getOwnedSet(emIdx) {
+  if (!ownedGrades.has(emIdx)) {
+    ownedGrades.set(emIdx, new Set(emblemGradesAvailable(emIdx)));
+  }
+  return ownedGrades.get(emIdx);
+}
+
+function setOwnedGrade(emIdx, grade, owned) {
+  const s = getOwnedSet(emIdx);
+  if (owned) s.add(grade); else s.delete(grade);
+}
+
+function defaultOwnedForEmblem(emIdx) {
+  const avail = emblemGradesAvailable(emIdx);
+  const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
+  const s = new Set(avail.filter(g => GRADE_ORDER.indexOf(g) <= maxIdx));
+  ownedGrades.set(emIdx, s.size ? s : new Set(avail));
+}
+
+function setPoolImportStatus(msg, isError) {
+  const el = document.getElementById('poolImportStatus');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.className = 'small mb-2 ' + (isError ? 'text-danger' : msg ? 'text-success' : 'text-secondary');
+}
+
+function exportPoolJson() {
+  const emblems = [];
+  poolSelected.forEach(emIdx => {
+    const em = EMBLEMS[emIdx];
+    if (!em) return;
+    const grades = [...getOwnedSet(emIdx)].filter(g => em.g?.[g]);
+    if (grades.length) emblems.push({ name: em.n, grades });
+  });
+  emblems.sort((a, b) => a.name.localeCompare(b.name));
+  const payload = {
+    version: POOL_SAVE_VERSION,
+    app: 'unite-emblem-optimizer',
+    dataSource: 'UniteDB (https://unite-db.com)',
+    exportedAt: new Date().toISOString(),
+    emblemCount: emblems.length,
+    emblems,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `unite-emblem-pool-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  setPoolImportStatus(`Saved ${emblems.length} Pokémon to JSON.`);
+}
+
+function importPoolJson(data) {
+  let list = [];
+  if (Array.isArray(data)) list = data;
+  else if (data?.emblems && Array.isArray(data.emblems)) list = data.emblems;
+  else if (data?.pool && Array.isArray(data.pool)) list = data.pool;
+  else throw new Error('Unrecognized pool file format.');
+
+  poolSelected.clear();
+  ownedGrades.clear();
+
+  let loaded = 0;
+  let skipped = 0;
+  const unknown = [];
+
+  list.forEach(entry => {
+    const name = typeof entry === 'string' ? entry : entry?.name;
+    if (!name) { skipped++; return; }
+    const emIdx = EMBLEM_INDEX_BY_NAME.get(name);
+    if (emIdx === undefined) {
+      unknown.push(name);
+      skipped++;
+      return;
+    }
+    const em = EMBLEMS[emIdx];
+    if (!em.g || !Object.keys(em.g).length) { skipped++; return; }
+
+    poolSelected.add(emIdx);
+    const avail = new Set(emblemGradesAvailable(emIdx));
+    let grades = typeof entry === 'object' && Array.isArray(entry.grades) ? entry.grades : [];
+    grades = grades.filter(g => avail.has(g));
+    if (!grades.length && typeof entry === 'object' && entry.grade) {
+      const g = entry.grade;
+      if (avail.has(g)) grades = [g];
+    }
+    if (!grades.length) defaultOwnedForEmblem(emIdx);
+    else ownedGrades.set(emIdx, new Set(grades));
+    loaded++;
+  });
+
+  renderPool();
+  syncPoolItemStates();
+  updatePoolCount();
+
+  let msg = `Loaded ${loaded} Pokémon`;
+  if (unknown.length) msg += ` (${unknown.length} unknown: ${unknown.slice(0, 3).join(', ')}${unknown.length > 3 ? '…' : ''})`;
+  else if (skipped) msg += ` (${skipped} skipped)`;
+  msg += '.';
+  setPoolImportStatus(msg, loaded === 0);
+  return { loaded, skipped, unknown };
+}
+
+function handlePoolFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      importPoolJson(data);
+    } catch (err) {
+      setPoolImportStatus(err.message || 'Invalid JSON file.', true);
+    }
+  };
+  reader.onerror = () => setPoolImportStatus('Could not read file.', true);
+  reader.readAsText(file);
+}
+
+function statLabel(id) {
+  return STATS.find(s => s.id === id)?.label || id;
+}
+
+function initUI() {
+  const maxDiv = document.getElementById('maximizeInputs');
+  const tgtDiv = document.getElementById('targetInputs');
+  STATS.forEach(s => {
+    maxDiv.innerHTML += `
+      <div class="row g-1 align-items-center mb-2 border-bottom border-secondary pb-2">
+        <div class="col-12 fw-semibold">${s.label}</div>
+        <div class="col-6">
+          <div class="form-check">
+            <input class="form-check-input max-priority" type="checkbox" data-stat="${s.id}" id="mp_${s.id}">
+            <label class="form-check-label" for="mp_${s.id}">Maximize</label>
+          </div>
+        </div>
+        <div class="col-6">
+          <input type="number" class="form-control form-control-sm max-weight" data-stat="${s.id}" value="1" min="0" step="0.5" title="Weight">
+        </div>
+        <div class="col-12">
+          <div class="form-check">
+            <input class="form-check-input protect-stat" type="checkbox" data-stat="${s.id}" id="pr_${s.id}">
+            <label class="form-check-label" for="pr_${s.id}">Protect (min net)</label>
+          </div>
+        </div>
+        <div class="col-12">
+          <input type="number" class="form-control form-control-sm protect-min" data-stat="${s.id}" value="0" step="1" placeholder="Min total allowed">
+        </div>
+      </div>`;
+    tgtDiv.innerHTML += `
+      <div class="row g-1 align-items-center mb-2">
+        <div class="col-1">
+          <input class="form-check-input target-use" type="checkbox" data-stat="${s.id}" id="tu_${s.id}">
+        </div>
+        <div class="col-4"><label for="tu_${s.id}">${s.label}</label></div>
+        <div class="col-7">
+          <input type="number" class="form-control form-control-sm target-val" data-stat="${s.id}" value="" placeholder="—" step="any">
+        </div>
+      </div>`;
+  });
+
+  document.getElementById('optMode').addEventListener('change', e => {
+    const t = e.target.value === 'target';
+    document.getElementById('targetPanel').classList.toggle('d-none', !t);
+    document.getElementById('maximizePanel').classList.toggle('d-none', t);
+  });
+
+  const cf = document.getElementById('colorFilters');
+  Object.keys(COLOR_LABELS).forEach(c => {
+    cf.innerHTML += `<button type="button" class="btn btn-outline-secondary btn-sm color-filter-btn" data-color="${c}">${c}</button>`;
+  });
+
+  EMBLEMS.forEach((em, i) => {
+    if (em.g && Object.keys(em.g).length) defaultOwnedForEmblem(i);
+  });
+  renderPool();
+  poolSelected = new Set(EMBLEMS.map((_, i) => i).filter(i => Object.keys(EMBLEMS[i].g || {}).length > 0));
+  syncPoolItemStates();
+  updatePoolCount();
+
+  document.getElementById('poolSearch').addEventListener('input', renderPool);
+  document.getElementById('poolSave').onclick = exportPoolJson;
+  document.getElementById('poolLoad').onclick = () => document.getElementById('poolFileInput').click();
+  document.getElementById('poolFileInput').addEventListener('change', e => {
+    const file = e.target.files?.[0];
+    handlePoolFile(file);
+    e.target.value = '';
+  });
+  document.getElementById('poolAll').onclick = () => { setPoolVisible(true); };
+  document.getElementById('poolNone').onclick = () => { setPoolVisible(false); };
+  document.getElementById('poolInvert').onclick = () => {
+    document.querySelectorAll('.pool-item:not([data-hidden])').forEach(item => {
+      const i = +item.dataset.idx;
+      if (poolSelected.has(i)) poolSelected.delete(i); else poolSelected.add(i);
+    });
+    syncPoolItemStates();
+    updatePoolCount();
+  };
+  document.getElementById('gradeOwnBronze').onclick = () => bulkSetVisibleGrades('bronze', true);
+  document.getElementById('gradeOwnSilver').onclick = () => bulkSetVisibleGrades('silver', true);
+  document.getElementById('gradeOwnGold').onclick = () => bulkSetVisibleGrades('gold', true);
+  document.getElementById('gradeOwnAll').onclick = () => bulkSetVisibleGrades('all', true);
+  document.getElementById('gradeOwnClear').onclick = () => bulkSetVisibleGrades('all', false);
+  document.querySelectorAll('input[name=maxGrade]').forEach(r =>
+    r.addEventListener('change', () => { syncPoolItemStates(); updatePoolCount(); })
+  );
+  document.getElementById('btnOptimize').onclick = runOptimize;
+  document.getElementById('btnOptimizeFab').onclick = runOptimize;
+
+  const mpSpatk = document.querySelector('.max-priority[data-stat="spatk"]');
+  const prHp = document.querySelector('.protect-stat[data-stat="hp"]');
+  const pmHp = document.querySelector('.protect-min[data-stat="hp"]');
+  if (mpSpatk) mpSpatk.checked = true;
+  if (prHp) prHp.checked = true;
+  if (pmHp) pmHp.value = '-200';
+}
+
+function gradeButtonsHtml(emIdx) {
+  const avail = emblemGradesAvailable(emIdx);
+  const owned = getOwnedSet(emIdx);
+  return GRADE_ORDER.map(g => {
+    const has = avail.includes(g);
+    const on = owned.has(g);
+    const cls = ['grade-btn', g, has ? 'available' : '', on ? 'owned' : ''].filter(Boolean).join(' ');
+    return `<span class="${cls}" data-idx="${emIdx}" data-grade="${g}" title="${has ? (on ? 'Own' : 'Do not own') : ''} ${g}">${GRADE_SHORT[g]}</span>`;
+  }).join('');
+}
+
+function renderPool() {
+  const q = document.getElementById('poolSearch').value.toLowerCase();
+  const activeColors = [...document.querySelectorAll('.color-filter-btn.active')].map(b => b.dataset.color);
+  const el = document.getElementById('emblemPool');
+  el.innerHTML = '';
+  EMBLEMS.forEach((em, i) => {
+    if (!em.g || !Object.keys(em.g).length) return;
+    const name = em.n.toLowerCase();
+    const hidden = (q && !name.includes(q)) ||
+      (activeColors.length && !(em.c || []).some(c => activeColors.includes(c)));
+    const colors = (em.c || []).map(c => `<span class="color-dot c-${c}" title="${c}"></span>`).join('');
+    const div = document.createElement('div');
+    div.className = 'pool-item d-flex align-items-center';
+    div.dataset.idx = String(i);
+    if (hidden) div.dataset.hidden = '1';
+    div.style.display = hidden ? 'none' : '';
+    div.innerHTML = `
+      <input class="form-check-input pool-cb me-1" type="checkbox" data-idx="${i}" id="p${i}">
+      <label class="form-check-label pool-name flex-grow-1 mb-0" for="p${i}">${em.n} ${colors}</label>
+      <span class="grade-toggles">${gradeButtonsHtml(i)}</span>`;
+    el.appendChild(div);
+    div.querySelector('.pool-cb').checked = poolSelected.has(i);
+    div.querySelector('.pool-cb').onchange = e => {
+      if (e.target.checked) {
+        poolSelected.add(i);
+        if (getOwnedSet(i).size === 0) defaultOwnedForEmblem(i);
+      } else poolSelected.delete(i);
+      syncPoolItemStates();
+      updatePoolCount();
+    };
+    div.querySelectorAll('.grade-btn.available').forEach(btn => {
+      btn.onclick = ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!poolSelected.has(i)) {
+          poolSelected.add(i);
+          div.querySelector('.pool-cb').checked = true;
+        }
+        const grade = btn.dataset.grade;
+        setOwnedGrade(i, grade, !getOwnedSet(i).has(grade));
+        btn.classList.toggle('owned', getOwnedSet(i).has(grade));
+        syncPoolItemStates();
+        updatePoolCount();
+      };
+    });
+  });
+  syncPoolItemStates();
+}
+
+function syncPoolItemStates() {
+  document.querySelectorAll('.pool-item').forEach(item => {
+    const i = +item.dataset.idx;
+    const inPool = poolSelected.has(i);
+    const cb = item.querySelector('.pool-cb');
+    if (cb) cb.checked = inPool;
+    item.classList.toggle('disabled-pool', !inPool);
+    const owned = getOwnedSet(i);
+    item.querySelectorAll('.grade-btn.available').forEach(btn => {
+      btn.classList.toggle('owned', inPool && owned.has(btn.dataset.grade));
+      btn.style.pointerEvents = inPool ? '' : 'none';
+      btn.style.opacity = inPool ? '' : '0.35';
+    });
+  });
+}
+
+function bulkSetVisibleGrades(grade, enable) {
+  document.querySelectorAll('.pool-item:not([data-hidden])').forEach(item => {
+    const i = +item.dataset.idx;
+    if (!poolSelected.has(i) && enable) {
+      poolSelected.add(i);
+    }
+    const avail = emblemGradesAvailable(i);
+    if (grade === 'all') {
+      avail.forEach(g => setOwnedGrade(i, g, enable));
+    } else if (avail.includes(grade)) {
+      setOwnedGrade(i, grade, enable);
+    }
+  });
+  renderPool();
+  updatePoolCount();
+}
+
+function setPoolVisible(on) {
+  document.querySelectorAll('.pool-item:not([data-hidden])').forEach(item => {
+    const i = +item.dataset.idx;
+    if (on) {
+      poolSelected.add(i);
+      if (getOwnedSet(i).size === 0) defaultOwnedForEmblem(i);
+    } else poolSelected.delete(i);
+  });
+  syncPoolItemStates();
+  updatePoolCount();
+}
+
+function updatePoolCount() {
+  const total = EMBLEMS.filter(e => e.g && Object.keys(e.g).length).length;
+  let variants = 0;
+  poolSelected.forEach(i => {
+    const owned = getOwnedSet(i);
+    const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
+    variants += [...owned].filter(g => GRADE_ORDER.indexOf(g) <= maxIdx && EMBLEMS[i].g[g]).length;
+  });
+  document.getElementById('poolCount').textContent =
+    `${poolSelected.size} Pokémon · ${variants} owned grades`;
+}
+
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('color-filter-btn')) {
+    e.target.classList.toggle('active');
+    renderPool();
+    updatePoolCount();
+  }
+});
+
+function getMaxGrade() {
+  return document.querySelector('input[name=maxGrade]:checked').value;
+}
+
+function buildCandidates() {
+  const maxG = getMaxGrade();
+  const maxIdx = GRADE_ORDER.indexOf(maxG);
+  const mixed = document.getElementById('mixedGrades').checked;
+  const list = [];
+  poolSelected.forEach(emIdx => {
+    const em = EMBLEMS[emIdx];
+    if (!em?.g) return;
+    let grades = [...getOwnedSet(emIdx)].filter(g => em.g[g] && GRADE_ORDER.indexOf(g) <= maxIdx);
+    if (!grades.length) return;
+    if (!mixed) {
+      const best = GRADE_ORDER.filter(g => grades.includes(g)).pop();
+      grades = best ? [best] : [];
+    }
+    grades.forEach(grade => {
+      list.push({
+        emIdx, name: em.n, grade,
+        colors: em.c || [],
+        stats: { ...em.g[grade] },
+      });
+    });
+  });
+  return list;
+}
+
+function sumStats(loadout) {
+  const t = {};
+  STATS.forEach(s => { t[s.id] = 0; });
+  loadout.forEach(item => {
+    Object.entries(item.stats).forEach(([k, v]) => {
+      if (t[k] !== undefined) t[k] += v;
+    });
+  });
+  return t;
+}
+
+function countColors(loadout) {
+  const c = {};
+  loadout.forEach(item => {
+    item.colors.forEach(col => { c[col] = (c[col] || 0) + 1; });
+  });
+  return c;
+}
+
+function colorBonusScore(counts, includeBonuses) {
+  if (!includeBonuses) return { score: 0, details: [] };
+  let score = 0;
+  const details = [];
+  Object.entries(counts).forEach(([color, n]) => {
+    const th = COLOR_THRESHOLDS[color];
+    const bon = COLOR_BONUS[color];
+    if (!th) return;
+    let tier = -1;
+    for (let i = th.length - 1; i >= 0; i--) {
+      if (n >= th[i]) { tier = i; break; }
+    }
+    if (tier >= 0) {
+      const val = bon[tier];
+      const w = color === 'gray' ? 8 : 15;
+      score += val * w;
+      details.push({ color, n, effect: COLOR_BONUS_STAT[color], value: val });
+    }
+  });
+  return { score, details };
+}
+
+function normalizeStatForScore(statId, val) {
+  const s = STATS.find(x => x.id === statId);
+  return val * (s?.scale || 1);
+}
+
+function evaluate(loadout, mode, opts) {
+  const totals = sumStats(loadout);
+  const counts = countColors(loadout);
+  const cb = colorBonusScore(counts, opts.colorBonuses);
+
+  if (mode === 'maximize') {
+    let score = cb.score;
+    for (const s of STATS) {
+      const v = totals[s.id] || 0;
+      if (opts.priorities[s.id]) {
+        score += normalizeStatForScore(s.id, v) * opts.weights[s.id];
+      }
+      if (opts.protected[s.id] !== undefined) {
+        const min = opts.protected[s.id];
+        if (v < min) return { valid: false, score: -1e12, totals, counts, cb };
+        score += v < 0 ? v * 50 : 0;
+      }
+    }
+    return { valid: true, score, totals, counts, cb };
+  }
+
+  let err = 0;
+  for (const s of STATS) {
+    const tgt = opts.targets[s.id] || 0;
+    const v = totals[s.id] || 0;
+    if (opts.targetActive[s.id]) {
+      const w = STATS.find(x => x.id === s.id)?.scale || 1;
+      err += Math.abs(v - tgt) * w;
+    }
+  }
+  const score = -err + cb.score * 0.01;
+  return { valid: true, score, totals, counts, cb, error: err };
+}
+
+function getOpts() {
+  const mode = document.getElementById('optMode').value;
+  const colorBonuses = document.getElementById('colorBonuses').checked;
+  if (mode === 'maximize') {
+    const priorities = {}, weights = {}, protected = {};
+    STATS.forEach(s => {
+      priorities[s.id] = document.querySelector(`.max-priority[data-stat="${s.id}"]`).checked;
+      weights[s.id] = parseFloat(document.querySelector(`.max-weight[data-stat="${s.id}"]`).value) || 1;
+      if (document.querySelector(`.protect-stat[data-stat="${s.id}"]`).checked) {
+        protected[s.id] = parseFloat(document.querySelector(`.protect-min[data-stat="${s.id}"]`).value) || 0;
+      }
+    });
+    return { mode, colorBonuses, priorities, weights, protected };
+  }
+  const targets = {}, targetActive = {};
+  STATS.forEach(s => {
+    const inp = document.querySelector(`.target-val[data-stat="${s.id}"]`);
+    const use = document.querySelector(`.target-use[data-stat="${s.id}"]`).checked;
+    targetActive[s.id] = use && inp.value !== '' && !isNaN(parseFloat(inp.value));
+    targets[s.id] = parseFloat(inp.value) || 0;
+  });
+  return { mode, colorBonuses, targets, targetActive };
+}
+
+function optimize(candidates, opts) {
+  const SLOTS = 10;
+  const usedNames = new Set();
+  const pool = candidates.filter(() => true);
+
+  function greedySeed() {
+    const loadout = [];
+    const names = new Set();
+    const sorted = [...pool].sort(() => Math.random() - 0.5);
+    for (const c of sorted) {
+      if (loadout.length >= SLOTS) break;
+      if (names.has(c.name)) continue;
+      const trial = [...loadout, c];
+      const ev = evaluate(trial, opts.mode, opts);
+      if (!ev.valid) continue;
+      loadout.push(c);
+      names.add(c.name);
+    }
+    return loadout;
+  }
+
+  function improve(loadout) {
+    let best = loadout.slice();
+    let bestEv = evaluate(best, opts.mode, opts);
+    if (!bestEv.valid) bestEv = { score: -1e12 };
+
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (let slot = 0; slot < best.length; slot++) {
+        const names = new Set(best.map((x, i) => i === slot ? null : x.name).filter(Boolean));
+        for (const cand of pool) {
+          if (names.has(cand.name)) continue;
+          const trial = best.slice();
+          trial[slot] = cand;
+          const ev = evaluate(trial, opts.mode, opts);
+          if (ev.valid && ev.score > bestEv.score) {
+            best = trial;
+            bestEv = ev;
+            improved = true;
+          }
+        }
+      }
+      if (best.length < SLOTS) {
+        const names = new Set(best.map(x => x.name));
+        for (const cand of pool) {
+          if (names.has(cand.name)) continue;
+          const trial = [...best, cand];
+          const ev = evaluate(trial, opts.mode, opts);
+          if (ev.valid && ev.score > bestEv.score) {
+            best = trial;
+            bestEv = ev;
+            names.add(cand.name);
+            improved = true;
+          }
+        }
+      }
+    }
+    return { loadout: best, ev: bestEv };
+  }
+
+  let globalBest = { loadout: [], ev: { score: -1e12 } };
+  const restarts = Math.min(120, Math.max(30, Math.floor(8000 / (pool.length + 1))));
+
+  for (let r = 0; r < restarts; r++) {
+    let L = greedySeed();
+    if (L.length < SLOTS) {
+      const names = new Set(L.map(x => x.name));
+      const byScore = [...pool].filter(c => !names.has(c.name));
+      for (const c of byScore) {
+        if (L.length >= SLOTS) break;
+        const trial = [...L, c];
+        if (evaluate(trial, opts.mode, opts).valid) { L = trial; names.add(c.name); }
+      }
+    }
+    const res = improve(L);
+    if (res.ev.valid && res.ev.score > globalBest.ev.score) globalBest = res;
+  }
+
+  if (globalBest.loadout.length < SLOTS && pool.length >= SLOTS) {
+    const sorted = [...pool].sort((a, b) => {
+      const sa = Object.values(a.stats).reduce((s,v)=>s+Math.abs(v),0);
+      const sb = Object.values(b.stats).reduce((s,v)=>s+Math.abs(v),0);
+      return sb - sa;
+    });
+    const L = [];
+    const names = new Set();
+    for (const c of sorted) {
+      if (L.length >= SLOTS) break;
+      if (names.has(c.name)) continue;
+      const trial = [...L, c];
+      if (evaluate(trial, opts.mode, opts).valid) { L.push(c); names.add(c.name); }
+    }
+    const res = improve(L);
+    if (res.ev.valid && res.ev.score > globalBest.ev.score) globalBest = res;
+  }
+
+  return globalBest;
+}
+
+function fmtStat(v, id) {
+  if (Math.abs(v) < 0.001) return '0';
+  if (id === 'crit' || id === 'cdr') return (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+  return (v > 0 ? '+' : '') + (Number.isInteger(v) ? v : v.toFixed(1));
+}
+
+function renderResults(result) {
+  const { loadout, ev } = result;
+  const body = document.getElementById('resultsBody');
+  if (!loadout.length) {
+    body.innerHTML = '<p class="text-danger">No valid loadout found. Expand your pool or relax protected stat limits.</p>';
+    document.getElementById('totalsBody').innerHTML = '';
+    return;
+  }
+
+  let html = '<div class="row g-2">';
+  loadout.forEach((item, i) => {
+    const gains = [], losses = [];
+    Object.entries(item.stats).forEach(([k, v]) => {
+      const lbl = statLabel(k);
+      if (v > 0) gains.push(`${lbl} ${fmtStat(v,k)}`);
+      else if (v < 0) losses.push(`${lbl} ${fmtStat(v,k)}`);
+    });
+    const cols = item.colors.map(c => `<span class="color-dot c-${c}"></span>`).join('');
+    html += `<div class="col-12"><div class="card slot-card bg-black border-secondary p-2">
+      <div class="d-flex justify-content-between">
+        <strong>${i+1}. ${item.name}</strong>
+        <span class="grade-${item.grade} text-uppercase small">${item.grade}</span>
+      </div>
+      <div>${cols}</div>
+      <div class="small stat-pos">${gains.join(' · ') || '—'}</div>
+      <div class="small stat-neg">${losses.join(' · ') || '—'}</div>
+    </div></div>`;
+  });
+  html += '</div>';
+  if (!ev.valid) html += '<p class="text-warning mt-2">Partial loadout — constraints could not be fully satisfied.</p>';
+  body.innerHTML = html;
+
+  const totals = ev.totals;
+  let tHtml = '<table class="table table-sm table-dark mb-2"><tbody>';
+  STATS.forEach(s => {
+    const v = totals[s.id] || 0;
+    const cls = v > 0 ? 'stat-pos' : v < 0 ? 'stat-neg' : '';
+    tHtml += `<tr><td>${s.label}</td><td class="${cls}">${fmtStat(v, s.id)}</td></tr>`;
+  });
+  tHtml += '</tbody></table>';
+  if (ev.cb?.details?.length) {
+    tHtml += '<p class="small fw-semibold mb-1">Color set bonuses</p><ul class="small mb-0">';
+    ev.cb.details.forEach(d => {
+      const lbl = COLOR_LABELS[d.color] || d.color;
+      const val = d.effect === 'dmgflat' ? `${d.value} flat dmg` : `${d.value > 0 ? '+' : ''}${d.value}% ${d.effect}`;
+      tHtml += `<li><span class="color-dot c-${d.color}"></span>${lbl}: ${d.n} emblems → ${val}</li>`;
+    });
+    tHtml += '</ul>';
+  }
+  const counts = ev.counts || {};
+  tHtml += '<p class="small text-secondary mt-2 mb-0">Color counts: ' +
+    Object.entries(counts).map(([c,n]) => `${c}:${n}`).join(', ') + '</p>';
+  document.getElementById('totalsBody').innerHTML = tHtml;
+}
+
+function runOptimize() {
+  const candidates = buildCandidates();
+  if (candidates.length < 10) {
+    alert('Need at least 10 usable grade options: select more Pokémon, mark grades you own (B/S/G), and check max grade / mixed grade settings.');
+    return;
+  }
+  const uniqueNames = new Set(candidates.map(c => c.name));
+  if (uniqueNames.size < 10) {
+    alert(`Only ${uniqueNames.size} Pokémon have owned grades — enable more emblems or mark additional B/S/G grades you possess.`);
+    return;
+  }
+  const opts = getOpts();
+  const hasMax = opts.mode === 'maximize' && STATS.some(s => opts.priorities[s.id]);
+  const hasTgt = opts.mode === 'target' && STATS.some(s => opts.targetActive[s.id]);
+  if (!hasMax && !hasTgt) {
+    alert('Enable at least one stat to maximize, or set target values.');
+    return;
+  }
+
+  const bars = [document.getElementById('progressBar'), document.getElementById('progressBarFab')];
+  const btns = [document.getElementById('btnOptimize'), document.getElementById('btnOptimizeFab')];
+  bars.forEach(b => { if (b) b.style.display = 'block'; });
+  btns.forEach(b => { if (b) b.disabled = true; });
+
+  setTimeout(() => {
+    const result = optimize(candidates, opts);
+    renderResults(result);
+    bars.forEach(b => { if (b) b.style.display = 'none'; });
+    btns.forEach(b => { if (b) b.disabled = false; });
+    if (window.matchMedia('(max-width: 991.98px)').matches) {
+      document.getElementById('resultsCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 30);
+}
+
+document.addEventListener('DOMContentLoaded', initUI);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
