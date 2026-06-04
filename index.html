@@ -100,6 +100,36 @@
     .pool-io-toolbar .btn { min-height: var(--touch-min); }
     #poolImportStatus { min-height: 1.25rem; }
     #maxGradeGroup .btn { min-height: var(--touch-min); }
+    .color-target-row {
+      display: grid;
+      grid-template-columns: 1.125rem 2.25rem minmax(0, 1fr) 3.25rem;
+      gap: 0.4rem 0.5rem;
+      align-items: center;
+      margin-bottom: 0.4rem;
+    }
+    .color-target-row .color-target-check {
+      margin: 0;
+      width: 1.15em;
+      height: 1.15em;
+      justify-self: center;
+      flex-shrink: 0;
+    }
+    .color-target-label {
+      margin: 0;
+      line-height: 1.35;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .color-target-row .color-target-val {
+      width: 100%;
+      min-width: 0;
+      padding-left: 0.35rem;
+      padding-right: 0.35rem;
+      text-align: center;
+    }
+    #colorTargetSummary { min-height: 2.5rem; }
     .optimize-sticky { margin-top: 1rem; }
     .optimize-fab {
       display: none;
@@ -237,8 +267,9 @@
           </div>
           <div class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" id="mixedGrades" checked>
-            <label class="form-check-label" for="mixedGrades">Allow mixed grades (B/S/G) for best fit</label>
+            <label class="form-check-label" for="mixedGrades">Allow mixed grades (B/S/G) in one loadout</label>
           </div>
+          <p class="small text-secondary mb-3" id="mixedGradesHint">When off, all 10 slots use the same tier (all B, all S, or all G); the best tier is picked automatically.</p>
           <div class="form-check form-switch mb-3">
             <input class="form-check-input" type="checkbox" id="colorBonuses" checked>
             <label class="form-check-label" for="colorBonuses">Include color set bonuses in scoring</label>
@@ -251,6 +282,19 @@
         </div>
       </div>
 
+      <div class="card bg-dark border-secondary mt-3" id="colorTargetsPanel">
+        <div class="card-header">Color counts (10 slots)</div>
+        <div class="card-body small">
+          <p class="text-secondary mb-2">Each slot adds 1 toward every color on that emblem (dual-color counts twice).</p>
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="useColorTargets">
+            <label class="form-check-label" for="useColorTargets">Require exact color counts</label>
+          </div>
+          <div id="colorTargetInputs"></div>
+          <div id="colorTargetSummary" class="text-secondary mt-1"></div>
+        </div>
+      </div>
+
       <div class="card bg-dark border-secondary mt-3" id="maximizePanel">
         <div class="card-header">Maximize — priorities &amp; limits</div>
         <div class="card-body small" id="maximizeInputs"></div>
@@ -258,7 +302,10 @@
 
       <div class="card bg-dark border-secondary mt-3 d-none" id="targetPanel">
         <div class="card-header">Target — desired totals (10 slots)</div>
-        <div class="card-body small" id="targetInputs"></div>
+        <div class="card-body small">
+          <p class="text-secondary mb-2">Enter equipped stat totals from the game. Any stat with a number is matched (checkboxes auto-enable on Optimize). Values are raw emblem sums — not color-set % bonuses. Smaller owned pools search faster. Each Optimize suggests a build — click again for alternates.</p>
+          <div id="targetInputs"></div>
+        </div>
       </div>
 
       <div class="optimize-sticky">
@@ -521,7 +568,7 @@ function initUI() {
     tgtDiv.innerHTML += `
       <div class="row g-1 align-items-center mb-2">
         <div class="col-1">
-          <input class="form-check-input target-use" type="checkbox" data-stat="${s.id}" id="tu_${s.id}">
+          <input class="form-check-input target-use" type="checkbox" data-stat="${s.id}" id="tu_${s.id}" checked>
         </div>
         <div class="col-4"><label for="tu_${s.id}">${s.label}</label></div>
         <div class="col-7">
@@ -535,6 +582,25 @@ function initUI() {
     document.getElementById('targetPanel').classList.toggle('d-none', !t);
     document.getElementById('maximizePanel').classList.toggle('d-none', t);
   });
+
+  const ct = document.getElementById('colorTargetInputs');
+  Object.keys(COLOR_LABELS).forEach(color => {
+    const short = color.charAt(0).toUpperCase() + color.slice(1);
+    ct.innerHTML += `
+      <div class="color-target-row">
+        <span class="color-dot c-${color}" title="${COLOR_LABELS[color]}"></span>
+        <input class="form-check-input color-target-use color-target-check" type="checkbox" data-color="${color}" id="ctu_${color}" aria-label="Use ${short}">
+        <label class="color-target-label" for="ctu_${color}">${short}</label>
+        <input type="number" class="form-control form-control-sm color-target-val" data-color="${color}"
+          value="0" min="0" max="20" step="1" inputmode="numeric" aria-label="${short} count">
+      </div>`;
+  });
+  document.getElementById('useColorTargets').addEventListener('change', updateColorTargetSummary);
+  document.querySelectorAll('.color-target-use, .color-target-val').forEach(el => {
+    el.addEventListener('change', updateColorTargetSummary);
+    el.addEventListener('input', updateColorTargetSummary);
+  });
+  updateColorTargetSummary();
 
   const cf = document.getElementById('colorFilters');
   Object.keys(COLOR_LABELS).forEach(c => {
@@ -577,6 +643,7 @@ function initUI() {
   document.querySelectorAll('input[name=maxGrade]').forEach(r =>
     r.addEventListener('change', () => { syncPoolItemStates(); updatePoolCount(); })
   );
+  document.getElementById('mixedGrades')?.addEventListener('change', updatePoolCount);
   document.getElementById('btnOptimize').onclick = runOptimize;
   document.getElementById('btnOptimizeFab').onclick = runOptimize;
 
@@ -711,6 +778,23 @@ function setPoolVisible(on) {
   updatePoolCount();
 }
 
+function getSearchPoolStats() {
+  const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
+  const mixed = document.getElementById('mixedGrades')?.checked ?? true;
+  let variants = 0;
+  const perTier = { bronze: 0, silver: 0, gold: 0 };
+  poolSelected.forEach(i => {
+    const owned = getOwnedSet(i);
+    GRADE_ORDER.forEach((g, gi) => {
+      if (gi > maxIdx || !EMBLEMS[i]?.g?.[g] || !owned.has(g)) return;
+      perTier[g]++;
+      variants++;
+    });
+  });
+  const viableTiers = GRADE_ORDER.filter(g => perTier[g] >= 10);
+  return { mixed, variants, perTier, viableTiers, poolSize: poolSelected.size };
+}
+
 function updatePoolCount() {
   const q = getPoolSearchQuery();
   const activeColors = getActiveColorFilters();
@@ -718,13 +802,15 @@ function updatePoolCount() {
   const visible = filtering
     ? EMBLEMS.filter(e => e.g && Object.keys(e.g).length && emblemMatchesPoolFilters(e, q, activeColors)).length
     : EMBLEMS.filter(e => e.g && Object.keys(e.g).length).length;
-  let variants = 0;
-  poolSelected.forEach(i => {
-    const owned = getOwnedSet(i);
-    const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
-    variants += [...owned].filter(g => GRADE_ORDER.indexOf(g) <= maxIdx && EMBLEMS[i].g[g]).length;
-  });
-  let text = `${poolSelected.size} Pokémon · ${variants} owned grades`;
+  const stats = getSearchPoolStats();
+  let text;
+  if (stats.mixed) {
+    text = `${stats.poolSize} Pokémon · ${stats.variants} grade options (B/S/G can mix)`;
+  } else {
+    const tierParts = GRADE_ORDER.map(g => `${GRADE_SHORT[g]}:${stats.perTier[g]}`).join(' ');
+    const ok = stats.viableTiers.map(g => GRADE_SHORT[g]).join('/') || '—';
+    text = `${stats.poolSize} Pokémon · single tier · ${tierParts} · viable: ${ok}`;
+  }
   if (filtering) text = `${visible} shown · ${text}`;
   document.getElementById('poolCount').textContent = text;
 }
@@ -740,20 +826,13 @@ function getMaxGrade() {
   return document.querySelector('input[name=maxGrade]:checked').value;
 }
 
-function buildCandidates() {
-  const maxG = getMaxGrade();
-  const maxIdx = GRADE_ORDER.indexOf(maxG);
-  const mixed = document.getElementById('mixedGrades').checked;
+function buildCandidatesMixed() {
+  const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
   const list = [];
   poolSelected.forEach(emIdx => {
     const em = EMBLEMS[emIdx];
     if (!em?.g) return;
-    let grades = [...getOwnedSet(emIdx)].filter(g => em.g[g] && GRADE_ORDER.indexOf(g) <= maxIdx);
-    if (!grades.length) return;
-    if (!mixed) {
-      const best = GRADE_ORDER.filter(g => grades.includes(g)).pop();
-      grades = best ? [best] : [];
-    }
+    const grades = [...getOwnedSet(emIdx)].filter(g => em.g[g] && GRADE_ORDER.indexOf(g) <= maxIdx);
     grades.forEach(grade => {
       list.push({
         emIdx, name: em.n, grade,
@@ -763,6 +842,28 @@ function buildCandidates() {
     });
   });
   return list;
+}
+
+function buildCandidatesForTier(tier) {
+  const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
+  const tierIdx = GRADE_ORDER.indexOf(tier);
+  if (tierIdx > maxIdx) return [];
+  const list = [];
+  poolSelected.forEach(emIdx => {
+    const em = EMBLEMS[emIdx];
+    if (!em?.g?.[tier] || !getOwnedSet(emIdx).has(tier)) return;
+    list.push({
+      emIdx, name: em.n, grade: tier,
+      colors: em.c || [],
+      stats: { ...em.g[tier] },
+    });
+  });
+  return list;
+}
+
+function buildCandidates() {
+  const mixed = document.getElementById('mixedGrades')?.checked ?? true;
+  return mixed ? buildCandidatesMixed() : null;
 }
 
 function sumStats(loadout) {
@@ -782,6 +883,532 @@ function countColors(loadout) {
     item.colors.forEach(col => { c[col] = (c[col] || 0) + 1; });
   });
   return c;
+}
+
+function getColorTargets() {
+  if (!document.getElementById('useColorTargets').checked) return null;
+  const targets = {};
+  let sum = 0;
+  document.querySelectorAll('.color-target-use:checked').forEach(cb => {
+    const color = cb.dataset.color;
+    const raw = document.querySelector(`.color-target-val[data-color="${color}"]`)?.value;
+    const val = parseInt(raw, 10);
+    if (!isNaN(val) && val >= 0) {
+      targets[color] = val;
+      sum += val;
+    }
+  });
+  if (!Object.keys(targets).length) return null;
+  return { targets, sum };
+}
+
+function updateColorTargetSummary() {
+  const el = document.getElementById('colorTargetSummary');
+  const ct = getColorTargets();
+  if (!document.getElementById('useColorTargets').checked) {
+    el.textContent = 'Enable the switch above, then check colors and set counts (e.g. 6 brown, 6 white).';
+    el.className = 'text-secondary mt-1';
+    return;
+  }
+  if (!ct) {
+    el.textContent = 'Check at least one color and set its target count.';
+    el.className = 'text-warning mt-1';
+    return;
+  }
+  const parts = Object.entries(ct.targets).map(([c, n]) => `${c}:${n}`);
+  let msg = `Targets: ${parts.join(', ')} (${ct.sum} color points). Max 20 from 10 slots.`;
+  if (ct.sum > 20) {
+    el.className = 'text-danger mt-1';
+    msg += ' Too many — lower counts.';
+  } else if (ct.sum > 10) {
+    el.className = 'text-secondary mt-1';
+    msg += ' Needs dual-color emblems.';
+  } else {
+    el.className = 'text-secondary mt-1';
+  }
+  el.textContent = msg;
+}
+
+function colorsMatchTargets(counts, colorTargets) {
+  if (!colorTargets) return true;
+  for (const [color, need] of Object.entries(colorTargets.targets)) {
+    if ((counts[color] || 0) !== need) return false;
+  }
+  return true;
+}
+
+function validateColorTargets(colorTargets, candidates) {
+  if (colorTargets.sum > 20) {
+    return 'Color targets exceed 20 total points (max from 10 dual-color slots).';
+  }
+  const byName = new Map();
+  candidates.forEach(c => {
+    if (!byName.has(c.name)) byName.set(c.name, c.colors);
+  });
+  const maxByColor = {};
+  byName.forEach(colors => {
+    colors.forEach(col => { maxByColor[col] = (maxByColor[col] || 0) + 1; });
+  });
+  for (const [color, need] of Object.entries(colorTargets.targets)) {
+    const max = maxByColor[color] || 0;
+    if (max < need) {
+      return `Cannot reach ${need}× ${color} — at most ${max} from your pool (unique Pokémon).`;
+    }
+  }
+  return null;
+}
+
+const SCORE_EPS = 1e-9;
+
+function compareCandidates(a, b) {
+  const n = a.name.localeCompare(b.name);
+  return n !== 0 ? n : a.grade.localeCompare(b.grade);
+}
+
+function loadoutSignature(loadout) {
+  return [...loadout].map(x => `${x.name}\u0001${x.grade}`).sort().join('\u0002');
+}
+
+function statTargetDelta(statId, actual, target) {
+  const diff = Math.abs(actual - target);
+  const tol = (statId === 'crit' || statId === 'cdr') ? 0.05 : 0.51;
+  return diff <= tol ? 0 : diff;
+}
+
+function targetError(loadout, opts) {
+  const totals = sumStats(loadout);
+  let err = 0;
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const w = s.scale || 1;
+    err += statTargetDelta(s.id, totals[s.id] || 0, opts.targets[s.id]) * w;
+  }
+  return err;
+}
+
+function isLoadoutBetter(ev, bestEv, loadout, bestLoadout, opts) {
+  if (!ev.valid) return false;
+  if (!bestLoadout?.length) return true;
+  if (opts?.mode === 'target') {
+    const errA = ev.error ?? Infinity;
+    const errB = bestEv.error ?? Infinity;
+    if (errA < errB - SCORE_EPS) return true;
+    if (Math.abs(errA - errB) <= SCORE_EPS) {
+      return loadoutSignature(loadout) < loadoutSignature(bestLoadout);
+    }
+    return false;
+  }
+  if (ev.score > bestEv.score + SCORE_EPS) return true;
+  if (Math.abs(ev.score - bestEv.score) <= SCORE_EPS) {
+    return loadoutSignature(loadout) < loadoutSignature(bestLoadout);
+  }
+  return false;
+}
+
+function candidateGreedyValue(c, opts) {
+  let v = 0;
+  if (opts.mode === 'maximize') {
+    for (const s of STATS) {
+      if (opts.priorities[s.id]) {
+        v += normalizeStatForScore(s.id, c.stats[s.id] || 0) * (opts.weights[s.id] || 1);
+      }
+    }
+  } else {
+    v = Object.values(c.stats).reduce((sum, x) => sum + Math.abs(x), 0);
+  }
+  return v;
+}
+
+function sortedPoolCopy(pool, restartIdx, opts) {
+  const mode = opts.mode === 'target' ? (restartIdx % 3) + 4 : (restartIdx % 4);
+  const totals = {};
+  STATS.forEach(s => { totals[s.id] = 0; });
+  return [...pool].sort((a, b) => {
+    if (mode === 4) {
+      const ga = candidateGreedyValue(a, opts);
+      const gb = candidateGreedyValue(b, opts);
+      if (Math.abs(gb - ga) > SCORE_EPS) return gb - ga;
+    } else if (mode === 5) {
+      const da = STATS.reduce((sum, s) => {
+        if (!opts.targetActive[s.id]) return sum;
+        return sum + statTargetDelta(s.id, (a.stats[s.id] || 0), opts.targets[s.id]);
+      }, 0);
+      const db = STATS.reduce((sum, s) => {
+        if (!opts.targetActive[s.id]) return sum;
+        return sum + statTargetDelta(s.id, (b.stats[s.id] || 0), opts.targets[s.id]);
+      }, 0);
+      if (Math.abs(da - db) > SCORE_EPS) return da - db;
+    }
+    if (mode === 0 || mode === 6) {
+      const d = candidateGreedyValue(b, opts) - candidateGreedyValue(a, opts);
+      if (Math.abs(d) > SCORE_EPS) return d;
+    } else if (mode === 1) {
+      const sa = Object.values(a.stats).reduce((s, x) => s + Math.abs(x), 0);
+      const sb = Object.values(b.stats).reduce((s, x) => s + Math.abs(x), 0);
+      if (Math.abs(sb - sa) > SCORE_EPS) return sb - sa;
+    } else if (mode === 2) {
+      const dc = (b.colors || []).join(',').localeCompare((a.colors || []).join(','));
+      if (dc) return dc;
+    }
+    return compareCandidates(a, b);
+  });
+}
+
+function targetErrorFromTotals(totals, opts) {
+  let err = 0;
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    err += statTargetDelta(s.id, totals[s.id] || 0, opts.targets[s.id]) * (s.scale || 1);
+  }
+  return err;
+}
+
+function groupPoolByName(pool) {
+  const map = new Map();
+  pool.forEach(c => {
+    if (!map.has(c.name)) map.set(c.name, []);
+    map.get(c.name).push(c);
+  });
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, variants]) => ({ name, variants: variants.sort(compareCandidates) }));
+}
+
+function groupOverallDist(g, opts, perSlot) {
+  let dist = 0;
+  for (const c of g.variants) {
+    let d = 0;
+    for (const s of STATS) {
+      if (!opts.targetActive[s.id]) continue;
+      d += Math.abs((c.stats[s.id] || 0) - perSlot[s.id]);
+    }
+    dist = Math.min(dist, d);
+  }
+  return dist;
+}
+
+function addTargetArchetypes(essential, groups, opts, slots) {
+  const perSlot = {};
+  STATS.forEach(s => {
+    if (opts.targetActive[s.id]) perSlot[s.id] = opts.targets[s.id] / slots;
+  });
+  for (const g of groups) {
+    for (const c of g.variants) {
+      const s = c.stats;
+      const hp = Math.round(s.hp || 0);
+      const sp = Math.round((s.spatk || 0) * 10) / 10;
+      const atk = s.atk || 0;
+      const cr = s.crit || 0;
+      if (opts.targetActive.hp && perSlot.hp >= 25) {
+        if (hp === 40 && Math.abs(sp + 2.4) < 0.05) essential.add(g.name);
+        if (hp === 50 && (Math.abs(sp + 3.0) < 0.05 || atk < 0)) essential.add(g.name);
+        if (hp === 30 && (Math.abs(cr + 0.3) < 0.05 || Math.abs(sp + 1.8) < 0.05)) essential.add(g.name);
+      }
+      if (opts.targetActive.atk && opts.targets.atk > 0.1 && atk >= 2.0) essential.add(g.name);
+      if (opts.targetActive.spatk && opts.targets.spatk < -5) {
+        if (sp === -3.6 || sp === -3.0 || sp === -2.4 || sp === -1.8) essential.add(g.name);
+      }
+    }
+  }
+}
+
+function filterPoolForTarget(pool, opts, slots, maxNames) {
+  const uniqueNames = new Set(pool.map(c => c.name)).size;
+  if (uniqueNames <= maxNames) return pool;
+
+  const perSlot = {};
+  STATS.forEach(s => {
+    if (opts.targetActive[s.id]) perSlot[s.id] = opts.targets[s.id] / slots;
+  });
+  const groups = groupPoolByName(pool);
+  const essential = new Set();
+  addTargetArchetypes(essential, groups, opts, slots);
+
+  const needBreadth = essential.size < 15;
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const tgt = opts.targets[s.id];
+    if (needBreadth) {
+      const ranked = groups.map(g => {
+        let best = Infinity;
+        for (const c of g.variants) {
+          const d = Math.abs((c.stats[s.id] || 0) - perSlot[s.id]);
+          if (d < best) best = d;
+        }
+        return { name: g.name, best };
+      });
+      ranked.sort((a, b) => a.best - b.best || a.name.localeCompare(b.name));
+      ranked.slice(0, 15).forEach(r => essential.add(r.name));
+    }
+    if (s.id === 'crit' || s.id === 'cdr') {
+      const tolHits = groups.map(g => {
+        let ok = false;
+        for (const c of g.variants) {
+          if (statTargetDelta(s.id, c.stats[s.id] || 0, tgt) === 0) { ok = true; break; }
+        }
+        return ok ? g.name : null;
+      }).filter(Boolean);
+      tolHits.sort((a, b) => a.localeCompare(b));
+      tolHits.slice(0, 8).forEach(n => essential.add(n));
+    }
+    if (essential.size < 28) {
+      const picks = groups.flatMap(g =>
+        g.variants.map(c => ({ name: g.name, v: c.stats[s.id] || 0 }))
+      );
+      if (tgt > 0.1) {
+        picks.filter(p => p.v > 0).sort((a, b) => b.v - a.v)
+          .slice(0, 8).forEach(p => essential.add(p.name));
+      }
+      if (tgt < -0.1) {
+        picks.filter(p => p.v < 0).sort((a, b) => a.v - b.v)
+          .slice(0, 10).forEach(p => essential.add(p.name));
+      }
+    }
+  }
+
+  const targetSize = Math.min(maxNames, essential.size + (essential.size < 15 ? 10 : 6));
+  const ranked = groups.map(g => ({ name: g.name, dist: groupOverallDist(g, opts, perSlot) }));
+  ranked.sort((a, b) => a.dist - b.dist || a.name.localeCompare(b.name));
+
+  const keep = new Set(essential);
+  for (const r of ranked) {
+    if (keep.size >= targetSize) break;
+    keep.add(r.name);
+  }
+  return pool.filter(c => keep.has(c.name));
+}
+
+function statTotalsKey(totals, opts) {
+  const parts = [];
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const v = totals[s.id] || 0;
+    const step = (s.id === 'crit' || s.id === 'cdr') ? 10 : (s.id === 'atk' ? 10 : 1);
+    parts.push(Math.round(v * step));
+  }
+  return parts.join('|');
+}
+
+function neededTotalsKey(totals, opts) {
+  const parts = [];
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const need = opts.targets[s.id] - (totals[s.id] || 0);
+    const step = (s.id === 'crit' || s.id === 'cdr') ? 10 : (s.id === 'atk' ? 10 : 1);
+    parts.push(Math.round(need * step));
+  }
+  return parts.join('|');
+}
+
+function enumeratePartial(groups, k, start, loadout, out, maxOut, state) {
+  if (out.length >= maxOut || state.aborted) return;
+  if (state.start && state.maxMs && Date.now() - state.start > state.maxMs) {
+    state.aborted = true;
+    return;
+  }
+  if (loadout.length === k) {
+    out.push({
+      loadout: loadout.slice(),
+      totals: sumStats(loadout),
+      names: new Set(loadout.map(x => x.name)),
+    });
+    return;
+  }
+  const need = k - loadout.length;
+  if (groups.length - start < need) return;
+  for (let i = start; i < groups.length; i++) {
+    if (state.aborted) return;
+    for (const c of groups[i].variants) {
+      loadout.push(c);
+      enumeratePartial(groups, k, i + 1, loadout, out, maxOut, state);
+      loadout.pop();
+      if (out.length >= maxOut || state.aborted) return;
+    }
+  }
+}
+
+function bruteForceTarget(pool, opts, slots, maxMs = 12000) {
+  const groups = groupPoolByName(pool);
+  if (groups.length < slots) return null;
+  let best = [];
+  let bestErr = Infinity;
+  const state = { start: Date.now(), maxMs };
+
+  function dfs(gi, loadout) {
+    if (Date.now() - state.start > state.maxMs) return;
+    if (loadout.length === slots) {
+      if (!evaluate(loadout, 'target', opts).valid) return;
+      const err = targetError(loadout, opts);
+      if (err < bestErr - SCORE_EPS) {
+        bestErr = err;
+        best = loadout.slice();
+      }
+      return;
+    }
+    const need = slots - loadout.length;
+    if (groups.length - gi < need) return;
+    for (let i = gi; i < groups.length; i++) {
+      for (const c of groups[i].variants) {
+        loadout.push(c);
+        dfs(i + 1, loadout);
+        loadout.pop();
+        if (bestErr <= SCORE_EPS) return;
+      }
+    }
+  }
+
+  dfs(0, []);
+  if (!best.length) return null;
+  return { loadout: best, error: bestErr };
+}
+
+function searchTargetMITM(pool, opts, slots) {
+  const groups = groupPoolByName(pool);
+  const half = Math.floor(slots / 2);
+  const state = { aborted: false, start: Date.now(), maxMs: 25000 };
+  const left = [];
+  const right = [];
+  enumeratePartial(groups, half, 0, [], left, 3000000, state);
+  if (state.aborted && !left.length) return null;
+  enumeratePartial(groups, slots - half, 0, [], right, 3000000, state);
+
+  const index = new Map();
+  for (const L of left) {
+    const key = statTotalsKey(L.totals, opts);
+    if (!index.has(key)) index.set(key, []);
+    index.get(key).push(L);
+  }
+
+  let best = [];
+  let bestErr = Infinity;
+  function lookupLeft(needKey) {
+    const hits = index.get(needKey);
+    if (hits) return hits;
+    const parts = needKey.split('|').map(x => parseInt(x, 10));
+    const out = [];
+    for (const [k, list] of index) {
+      const kp = k.split('|').map(x => parseInt(x, 10));
+      let ok = true;
+      for (let i = 0; i < parts.length; i++) {
+        if (Math.abs(kp[i] - parts[i]) > 1) { ok = false; break; }
+      }
+      if (ok) out.push(...list);
+      if (out.length > 200) break;
+    }
+    return out.length ? out : null;
+  }
+
+  for (const R of right) {
+    if (Date.now() - state.start > state.maxMs) break;
+    const matches = lookupLeft(neededTotalsKey(R.totals, opts));
+    if (!matches) continue;
+    for (const L of matches) {
+      let overlap = false;
+      for (const n of R.names) {
+        if (L.names.has(n)) { overlap = true; break; }
+      }
+      if (overlap) continue;
+      const full = [...L.loadout, ...R.loadout];
+      if (!evaluate(full, 'target', opts).valid) continue;
+      const err = targetError(full, opts);
+      if (err < bestErr - SCORE_EPS) {
+        bestErr = err;
+        best = full;
+        if (err <= SCORE_EPS) return { loadout: best, error: bestErr };
+      }
+    }
+  }
+
+  if (!best.length) return null;
+  return { loadout: best, error: bestErr };
+}
+
+function searchTargetExact(pool, opts, slots) {
+  const filtered = filterPoolForTarget(pool, opts, slots, 55);
+  const uniqueNames = new Set(filtered.map(c => c.name)).size;
+  const mitm = searchTargetMITM(filtered, opts, slots);
+  let bf = null;
+  if (uniqueNames <= 22) {
+    bf = bruteForceTarget(filtered, opts, slots, 20000);
+  }
+  if (bf && bf.error <= SCORE_EPS) return bf;
+  if (mitm && mitm.error <= SCORE_EPS) return mitm;
+  if (!bf && !mitm) return null;
+  if (!bf) return mitm;
+  if (!mitm) return bf;
+  return bf.error <= mitm.error ? bf : mitm;
+}
+
+function targetAwareSeed(pool, opts, slots) {
+  const loadout = [];
+  const names = new Set();
+
+  for (let s = 0; s < slots; s++) {
+    let best = null;
+    let bestErr = Infinity;
+    for (const c of pool) {
+      if (names.has(c.name)) continue;
+      const trial = [...loadout, c];
+      if (!evaluate(trial, 'target', opts).valid) continue;
+      const err = targetError(trial, opts);
+      if (err < bestErr - SCORE_EPS || (Math.abs(err - bestErr) <= SCORE_EPS && (!best || compareCandidates(c, best) < 0))) {
+        bestErr = err;
+        best = c;
+      }
+    }
+    if (!best) {
+      const remaining = pool.filter(c => !names.has(c.name)).sort(compareCandidates);
+      best = remaining[0];
+    }
+    if (!best) break;
+    loadout.push(best);
+    names.add(best.name);
+  }
+  return loadout;
+}
+
+function pickBetterCandidate(score, bestScore, c, best) {
+  if (score > bestScore + SCORE_EPS) return true;
+  if (Math.abs(score - bestScore) <= SCORE_EPS && best) return compareCandidates(c, best) < 0;
+  if (Math.abs(score - bestScore) <= SCORE_EPS && !best) return true;
+  return false;
+}
+
+function colorAwareSeed(pool, opts, slots) {
+  const targets = opts.colorTargets.targets;
+  const needs = { ...targets };
+  const loadout = [];
+  const names = new Set();
+
+  for (let s = 0; s < slots; s++) {
+    let best = null;
+    let bestScore = -1e9;
+    for (const c of pool) {
+      if (names.has(c.name)) continue;
+      let help = 0;
+      let harm = 0;
+      for (const col of c.colors) {
+        if (needs[col] > 0) help += needs[col] * 10 + 1;
+        else if (targets[col] !== undefined) harm += 100;
+      }
+      const score = help - harm;
+      if (pickBetterCandidate(score, bestScore, c, best)) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    if (!best) {
+      const remaining = pool.filter(c => !names.has(c.name)).sort(compareCandidates);
+      best = remaining[0];
+    }
+    if (!best) break;
+    loadout.push(best);
+    names.add(best.name);
+    best.colors.forEach(col => {
+      if (needs[col] !== undefined) needs[col] = Math.max(0, needs[col] - 1);
+    });
+  }
+  return loadout;
 }
 
 function colorBonusScore(counts, includeBonuses) {
@@ -814,6 +1441,9 @@ function normalizeStatForScore(statId, val) {
 function evaluate(loadout, mode, opts) {
   const totals = sumStats(loadout);
   const counts = countColors(loadout);
+  if (!colorsMatchTargets(counts, opts.colorTargets)) {
+    return { valid: false, score: -1e12, totals, counts, cb: { score: 0, details: [] } };
+  }
   const cb = colorBonusScore(counts, opts.colorBonuses);
 
   if (mode === 'maximize') {
@@ -832,22 +1462,15 @@ function evaluate(loadout, mode, opts) {
     return { valid: true, score, totals, counts, cb };
   }
 
-  let err = 0;
-  for (const s of STATS) {
-    const tgt = opts.targets[s.id] || 0;
-    const v = totals[s.id] || 0;
-    if (opts.targetActive[s.id]) {
-      const w = STATS.find(x => x.id === s.id)?.scale || 1;
-      err += Math.abs(v - tgt) * w;
-    }
-  }
-  const score = -err + cb.score * 0.01;
+  const err = targetError(loadout, opts);
+  const score = -err;
   return { valid: true, score, totals, counts, cb, error: err };
 }
 
 function getOpts() {
   const mode = document.getElementById('optMode').value;
   const colorBonuses = document.getElementById('colorBonuses').checked;
+  const colorTargets = getColorTargets();
   if (mode === 'maximize') {
     const priorities = {}, weights = {}, protected = {};
     STATS.forEach(s => {
@@ -857,28 +1480,39 @@ function getOpts() {
         protected[s.id] = parseFloat(document.querySelector(`.protect-min[data-stat="${s.id}"]`).value) || 0;
       }
     });
-    return { mode, colorBonuses, priorities, weights, protected };
+    return { mode, colorBonuses, colorTargets, priorities, weights, protected };
   }
   const targets = {}, targetActive = {};
   STATS.forEach(s => {
     const inp = document.querySelector(`.target-val[data-stat="${s.id}"]`);
-    const use = document.querySelector(`.target-use[data-stat="${s.id}"]`).checked;
-    targetActive[s.id] = use && inp.value !== '' && !isNaN(parseFloat(inp.value));
-    targets[s.id] = parseFloat(inp.value) || 0;
+    const raw = (inp?.value ?? '').trim();
+    const hasVal = raw !== '' && !isNaN(parseFloat(raw));
+    const use = document.querySelector(`.target-use[data-stat="${s.id}"]`)?.checked;
+    targetActive[s.id] = hasVal && use;
+    targets[s.id] = hasVal ? parseFloat(raw) : 0;
   });
-  return { mode, colorBonuses, targets, targetActive };
+  return { mode, colorBonuses, colorTargets, targets, targetActive };
+}
+
+function shufflePool(arr) {
+  return [...arr].sort(() => Math.random() - 0.5);
 }
 
 function optimize(candidates, opts) {
   const SLOTS = 10;
-  const usedNames = new Set();
   const pool = candidates.filter(() => true);
 
   function greedySeed() {
+    const shuffled = shufflePool(pool);
+    if (opts.colorTargets) {
+      const seeded = colorAwareSeed(shuffled, opts, SLOTS);
+      if (seeded.length === SLOTS && colorsMatchTargets(countColors(seeded), opts.colorTargets)) {
+        return seeded;
+      }
+    }
     const loadout = [];
     const names = new Set();
-    const sorted = [...pool].sort(() => Math.random() - 0.5);
-    for (const c of sorted) {
+    for (const c of shuffled) {
       if (loadout.length >= SLOTS) break;
       if (names.has(c.name)) continue;
       const trial = [...loadout, c];
@@ -905,7 +1539,7 @@ function optimize(candidates, opts) {
           const trial = best.slice();
           trial[slot] = cand;
           const ev = evaluate(trial, opts.mode, opts);
-          if (ev.valid && ev.score > bestEv.score) {
+          if (ev.valid && isLoadoutBetter(ev, bestEv, trial, best, opts)) {
             best = trial;
             bestEv = ev;
             improved = true;
@@ -918,7 +1552,7 @@ function optimize(candidates, opts) {
           if (names.has(cand.name)) continue;
           const trial = [...best, cand];
           const ev = evaluate(trial, opts.mode, opts);
-          if (ev.valid && ev.score > bestEv.score) {
+          if (ev.valid && isLoadoutBetter(ev, bestEv, trial, best, opts)) {
             best = trial;
             bestEv = ev;
             names.add(cand.name);
@@ -930,40 +1564,37 @@ function optimize(candidates, opts) {
     return { loadout: best, ev: bestEv };
   }
 
-  let globalBest = { loadout: [], ev: { score: -1e12 } };
-  const restarts = Math.min(120, Math.max(30, Math.floor(8000 / (pool.length + 1))));
+  let globalBest = { loadout: [], ev: { score: -1e12, error: Infinity } };
+  const baseRestarts = Math.min(120, Math.max(30, Math.floor(8000 / (pool.length + 1))));
+  let restarts = opts.colorTargets ? Math.max(baseRestarts, 80) : baseRestarts;
+  if (opts.mode === 'target') restarts = Math.max(restarts, 60);
 
   for (let r = 0; r < restarts; r++) {
     let L = greedySeed();
     if (L.length < SLOTS) {
       const names = new Set(L.map(x => x.name));
-      const byScore = [...pool].filter(c => !names.has(c.name));
-      for (const c of byScore) {
+      for (const c of shufflePool(pool)) {
         if (L.length >= SLOTS) break;
+        if (names.has(c.name)) continue;
         const trial = [...L, c];
         if (evaluate(trial, opts.mode, opts).valid) { L = trial; names.add(c.name); }
       }
     }
     const res = improve(L);
-    if (res.ev.valid && res.ev.score > globalBest.ev.score) globalBest = res;
+    if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
   }
 
   if (globalBest.loadout.length < SLOTS && pool.length >= SLOTS) {
-    const sorted = [...pool].sort((a, b) => {
-      const sa = Object.values(a.stats).reduce((s,v)=>s+Math.abs(v),0);
-      const sb = Object.values(b.stats).reduce((s,v)=>s+Math.abs(v),0);
-      return sb - sa;
-    });
     const L = [];
     const names = new Set();
-    for (const c of sorted) {
+    for (const c of shufflePool(pool)) {
       if (L.length >= SLOTS) break;
       if (names.has(c.name)) continue;
       const trial = [...L, c];
       if (evaluate(trial, opts.mode, opts).valid) { L.push(c); names.add(c.name); }
     }
     const res = improve(L);
-    if (res.ev.valid && res.ev.score > globalBest.ev.score) globalBest = res;
+    if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
   }
 
   return globalBest;
@@ -979,7 +1610,7 @@ function renderResults(result) {
   const { loadout, ev } = result;
   const body = document.getElementById('resultsBody');
   if (!loadout.length) {
-    body.innerHTML = '<p class="text-danger">No valid loadout found. Expand your pool or relax protected stat limits.</p>';
+    body.innerHTML = '<p class="text-danger">No valid loadout found. Expand your pool, relax protected stat limits, or adjust color count targets.</p>';
     document.getElementById('totalsBody').innerHTML = '';
     return;
   }
@@ -1005,14 +1636,31 @@ function renderResults(result) {
   });
   html += '</div>';
   if (!ev.valid) html += '<p class="text-warning mt-2">Partial loadout — constraints could not be fully satisfied.</p>';
+  if (ev.error !== undefined && document.getElementById('optMode')?.value === 'target') {
+    const match = ev.error < SCORE_EPS;
+    html += `<p class="small mt-2 ${match ? 'stat-pos' : 'text-warning'}">` +
+      (match ? 'All target stats matched (within tolerance).' : `Target mismatch score: ${ev.error.toFixed(2)} — see totals below.`) +
+      '</p>';
+  }
   body.innerHTML = html;
 
   const totals = ev.totals;
   let tHtml = '<table class="table table-sm table-dark mb-2"><tbody>';
+  const optsMode = document.getElementById('optMode')?.value;
+  const tgtOpts = optsMode === 'target' ? getOpts() : null;
   STATS.forEach(s => {
     const v = totals[s.id] || 0;
-    const cls = v > 0 ? 'stat-pos' : v < 0 ? 'stat-neg' : '';
-    tHtml += `<tr><td>${s.label}</td><td class="${cls}">${fmtStat(v, s.id)}</td></tr>`;
+    let cls = v > 0 ? 'stat-pos' : v < 0 ? 'stat-neg' : '';
+    let extra = '';
+    if (tgtOpts?.targetActive[s.id]) {
+      const tgt = tgtOpts.targets[s.id];
+      const d = statTargetDelta(s.id, v, tgt);
+      if (d > 0) {
+        cls = 'text-warning';
+        extra = ` <span class="text-secondary">(target ${fmtStat(tgt, s.id)})</span>`;
+      }
+    }
+    tHtml += `<tr><td>${s.label}</td><td class="${cls}">${fmtStat(v, s.id)}${extra}</td></tr>`;
   });
   tHtml += '</tbody></table>';
   if (ev.cb?.details?.length) {
@@ -1025,28 +1673,79 @@ function renderResults(result) {
     tHtml += '</ul>';
   }
   const counts = ev.counts || {};
-  tHtml += '<p class="small text-secondary mt-2 mb-0">Color counts: ' +
-    Object.entries(counts).map(([c,n]) => `${c}:${n}`).join(', ') + '</p>';
+  const ct = getColorTargets();
+  const countParts = Object.entries(counts).sort((a, b) => a[0].localeCompare(b[0])).map(([c, n]) => {
+    const need = ct?.targets?.[c];
+    if (need !== undefined) {
+      const ok = n === need;
+      return `<span class="${ok ? 'stat-pos' : 'stat-neg'}">${c}:${n}/${need}</span>`;
+    }
+    return `${c}:${n}`;
+  });
+  tHtml += '<p class="small text-secondary mt-2 mb-0">Color counts: ' + countParts.join(', ') + '</p>';
+  if (ct && !colorsMatchTargets(counts, ct)) {
+    tHtml += '<p class="small text-warning mb-0">Color targets were not fully met.</p>';
+  }
   document.getElementById('totalsBody').innerHTML = tHtml;
 }
 
 function runOptimize() {
-  const candidates = buildCandidates();
-  if (candidates.length < 10) {
-    alert('Need at least 10 usable grade options: select more Pokémon, mark grades you own (B/S/G), and check max grade / mixed grade settings.');
+  const mixed = document.getElementById('mixedGrades')?.checked ?? true;
+  const stats = getSearchPoolStats();
+  if (!mixed && !stats.viableTiers.length) {
+    alert('Single-tier mode needs at least 10 Pokémon with the same owned grade (all B, all S, or all G). Mark more grades or enable mixed grades.');
     return;
   }
-  const uniqueNames = new Set(candidates.map(c => c.name));
-  if (uniqueNames.size < 10) {
-    alert(`Only ${uniqueNames.size} Pokémon have owned grades — enable more emblems or mark additional B/S/G grades you possess.`);
-    return;
+  const candidates = buildCandidates();
+  if (candidates) {
+    if (candidates.length < 10) {
+      alert('Need at least 10 usable grade options: select more Pokémon, mark grades you own (B/S/G), and check max grade settings.');
+      return;
+    }
+    const uniqueNames = new Set(candidates.map(c => c.name));
+    if (uniqueNames.size < 10) {
+      alert(`Only ${uniqueNames.size} Pokémon have owned grades — enable more emblems or mark additional B/S/G grades you possess.`);
+      return;
+    }
+  }
+  if (document.getElementById('optMode').value === 'target') {
+    STATS.forEach(s => {
+      const inp = document.querySelector(`.target-val[data-stat="${s.id}"]`);
+      const raw = (inp?.value ?? '').trim();
+      if (raw !== '' && !isNaN(parseFloat(raw))) {
+        const cb = document.querySelector(`.target-use[data-stat="${s.id}"]`);
+        if (cb) cb.checked = true;
+      }
+    });
   }
   const opts = getOpts();
   const hasMax = opts.mode === 'maximize' && STATS.some(s => opts.priorities[s.id]);
   const hasTgt = opts.mode === 'target' && STATS.some(s => opts.targetActive[s.id]);
-  if (!hasMax && !hasTgt) {
-    alert('Enable at least one stat to maximize, or set target values.');
+  const hasColors = !!opts.colorTargets;
+  if (!hasMax && !hasTgt && !hasColors) {
+    alert('Enable at least one stat to maximize, set target values, or require color counts.');
     return;
+  }
+  if (opts.colorTargets) {
+    let colorErr = null;
+    if (mixed) {
+      colorErr = validateColorTargets(opts.colorTargets, candidates);
+    } else {
+      for (const tier of GRADE_ORDER) {
+        if (GRADE_ORDER.indexOf(tier) > GRADE_ORDER.indexOf(getMaxGrade())) continue;
+        const tierCands = buildCandidatesForTier(tier);
+        if (new Set(tierCands.map(c => c.name)).size < 10) continue;
+        colorErr = validateColorTargets(opts.colorTargets, tierCands);
+        if (!colorErr) break;
+      }
+      if (!colorErr && !stats.viableTiers.length) {
+        colorErr = 'Color targets cannot be met at any single grade tier.';
+      }
+    }
+    if (colorErr) {
+      alert(colorErr);
+      return;
+    }
   }
 
   const bars = [document.getElementById('progressBar'), document.getElementById('progressBarFab')];
@@ -1055,7 +1754,27 @@ function runOptimize() {
   btns.forEach(b => { if (b) b.disabled = true; });
 
   setTimeout(() => {
-    const result = optimize(candidates, opts);
+    let result;
+    if (mixed) {
+      result = optimize(candidates, opts);
+    } else {
+      let best = { loadout: [], ev: { score: -1e12, error: Infinity } };
+      for (const tier of GRADE_ORDER) {
+        if (GRADE_ORDER.indexOf(tier) > GRADE_ORDER.indexOf(getMaxGrade())) continue;
+        const tierCands = buildCandidatesForTier(tier);
+        const names = new Set(tierCands.map(c => c.name));
+        if (names.size < 10) continue;
+        const res = optimize(tierCands, opts);
+        if (isLoadoutBetter(res.ev, best.ev, res.loadout, best.loadout, opts)) best = res;
+      }
+      result = best;
+      if (!result.loadout.length) {
+        alert('Could not build a full loadout at any single grade tier. Try mixed grades or mark more B/S/G ownership.');
+        bars.forEach(b => { if (b) b.style.display = 'none'; });
+        btns.forEach(b => { if (b) b.disabled = false; });
+        return;
+      }
+    }
     renderResults(result);
     bars.forEach(b => { if (b) b.style.display = 'none'; });
     btns.forEach(b => { if (b) b.disabled = false; });
