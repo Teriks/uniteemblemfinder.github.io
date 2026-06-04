@@ -50,7 +50,14 @@
       flex: 1 1 auto;
       min-height: 12rem;
     }
-    .pool-item { padding: 0.5rem 0.25rem; border-bottom: 1px solid #2a2f36; gap: 0.35rem; }
+    .pool-item {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem 0.25rem;
+      border-bottom: 1px solid #2a2f36;
+      gap: 0.35rem;
+    }
+    .pool-item.pool-item-hidden { display: none !important; }
     .pool-item.disabled-pool { opacity: 0.45; }
     .pool-item .pool-name { cursor: pointer; line-height: 1.35; word-break: break-word; }
     .pool-item .form-check-input { width: 1.15em; height: 1.15em; margin-top: 0.2em; flex-shrink: 0; }
@@ -190,7 +197,7 @@
     @media (max-width: 575.98px) {
       .navbar-brand { font-size: 1.1rem; }
       .site-nav .text-secondary { font-size: 0.75rem; }
-      .pool-item {
+      .pool-item:not(.pool-item-hidden) {
         display: grid !important;
         grid-template-columns: auto 1fr;
         grid-template-rows: auto auto;
@@ -542,7 +549,9 @@ function initUI() {
   syncPoolItemStates();
   updatePoolCount();
 
-  document.getElementById('poolSearch').addEventListener('input', renderPool);
+  const poolSearchEl = document.getElementById('poolSearch');
+  poolSearchEl.addEventListener('input', onPoolSearchInput);
+  poolSearchEl.addEventListener('search', onPoolSearchInput);
   document.getElementById('poolSave').onclick = exportPoolJson;
   document.getElementById('poolLoad').onclick = () => document.getElementById('poolFileInput').click();
   document.getElementById('poolFileInput').addEventListener('change', e => {
@@ -553,7 +562,7 @@ function initUI() {
   document.getElementById('poolAll').onclick = () => { setPoolVisible(true); };
   document.getElementById('poolNone').onclick = () => { setPoolVisible(false); };
   document.getElementById('poolInvert').onclick = () => {
-    document.querySelectorAll('.pool-item:not([data-hidden])').forEach(item => {
+    document.querySelectorAll('.pool-item:not(.pool-item-hidden)').forEach(item => {
       const i = +item.dataset.idx;
       if (poolSelected.has(i)) poolSelected.delete(i); else poolSelected.add(i);
     });
@@ -590,22 +599,39 @@ function gradeButtonsHtml(emIdx) {
   }).join('');
 }
 
+function getPoolSearchQuery() {
+  return (document.getElementById('poolSearch')?.value || '').trim().toLowerCase();
+}
+
+function getActiveColorFilters() {
+  return [...document.querySelectorAll('.color-filter-btn.active')].map(b => b.dataset.color);
+}
+
+function emblemMatchesPoolFilters(em, q, activeColors) {
+  const name = (em.n || '').toLowerCase();
+  if (q && !name.includes(q)) return false;
+  if (activeColors.length && !(em.c || []).some(c => activeColors.includes(c))) return false;
+  return true;
+}
+
+function onPoolSearchInput() {
+  renderPool();
+  updatePoolCount();
+}
+
 function renderPool() {
-  const q = document.getElementById('poolSearch').value.toLowerCase();
-  const activeColors = [...document.querySelectorAll('.color-filter-btn.active')].map(b => b.dataset.color);
+  const q = getPoolSearchQuery();
+  const activeColors = getActiveColorFilters();
   const el = document.getElementById('emblemPool');
+  const scrollTop = el.scrollTop;
   el.innerHTML = '';
   EMBLEMS.forEach((em, i) => {
     if (!em.g || !Object.keys(em.g).length) return;
-    const name = em.n.toLowerCase();
-    const hidden = (q && !name.includes(q)) ||
-      (activeColors.length && !(em.c || []).some(c => activeColors.includes(c)));
+    const hidden = !emblemMatchesPoolFilters(em, q, activeColors);
     const colors = (em.c || []).map(c => `<span class="color-dot c-${c}" title="${c}"></span>`).join('');
     const div = document.createElement('div');
-    div.className = 'pool-item d-flex align-items-center';
+    div.className = 'pool-item' + (hidden ? ' pool-item-hidden' : '');
     div.dataset.idx = String(i);
-    if (hidden) div.dataset.hidden = '1';
-    div.style.display = hidden ? 'none' : '';
     div.innerHTML = `
       <input class="form-check-input pool-cb me-1" type="checkbox" data-idx="${i}" id="p${i}">
       <label class="form-check-label pool-name flex-grow-1 mb-0" for="p${i}">${em.n} ${colors}</label>
@@ -637,6 +663,7 @@ function renderPool() {
     });
   });
   syncPoolItemStates();
+  el.scrollTop = scrollTop;
 }
 
 function syncPoolItemStates() {
@@ -656,7 +683,7 @@ function syncPoolItemStates() {
 }
 
 function bulkSetVisibleGrades(grade, enable) {
-  document.querySelectorAll('.pool-item:not([data-hidden])').forEach(item => {
+  document.querySelectorAll('.pool-item:not(.pool-item-hidden)').forEach(item => {
     const i = +item.dataset.idx;
     if (!poolSelected.has(i) && enable) {
       poolSelected.add(i);
@@ -673,7 +700,7 @@ function bulkSetVisibleGrades(grade, enable) {
 }
 
 function setPoolVisible(on) {
-  document.querySelectorAll('.pool-item:not([data-hidden])').forEach(item => {
+  document.querySelectorAll('.pool-item:not(.pool-item-hidden)').forEach(item => {
     const i = +item.dataset.idx;
     if (on) {
       poolSelected.add(i);
@@ -685,22 +712,27 @@ function setPoolVisible(on) {
 }
 
 function updatePoolCount() {
-  const total = EMBLEMS.filter(e => e.g && Object.keys(e.g).length).length;
+  const q = getPoolSearchQuery();
+  const activeColors = getActiveColorFilters();
+  const filtering = !!(q || activeColors.length);
+  const visible = filtering
+    ? EMBLEMS.filter(e => e.g && Object.keys(e.g).length && emblemMatchesPoolFilters(e, q, activeColors)).length
+    : EMBLEMS.filter(e => e.g && Object.keys(e.g).length).length;
   let variants = 0;
   poolSelected.forEach(i => {
     const owned = getOwnedSet(i);
     const maxIdx = GRADE_ORDER.indexOf(getMaxGrade());
     variants += [...owned].filter(g => GRADE_ORDER.indexOf(g) <= maxIdx && EMBLEMS[i].g[g]).length;
   });
-  document.getElementById('poolCount').textContent =
-    `${poolSelected.size} Pokémon · ${variants} owned grades`;
+  let text = `${poolSelected.size} Pokémon · ${variants} owned grades`;
+  if (filtering) text = `${visible} shown · ${text}`;
+  document.getElementById('poolCount').textContent = text;
 }
 
 document.addEventListener('click', e => {
   if (e.target.classList.contains('color-filter-btn')) {
     e.target.classList.toggle('active');
-    renderPool();
-    updatePoolCount();
+    onPoolSearchInput();
   }
 });
 
