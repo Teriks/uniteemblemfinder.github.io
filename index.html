@@ -356,6 +356,7 @@
           <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning opt-progress-fill" style="width:0%"></div>
           </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2 d-none" id="btnCancelOptimize">Cancel search</button>
         </div>
       </div>
     </div>
@@ -415,6 +416,7 @@
     <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning opt-progress-fill" style="width:0%"></div>
     </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm w-100 mt-2 d-none" id="btnCancelOptimizeFab">Cancel search</button>
   </div>
 </div>
 
@@ -425,7 +427,8 @@
     <div class="progress w-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
       <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning opt-progress-fill" style="width:0%"></div>
     </div>
-    <p class="small text-secondary mt-2 mb-0">Keep this tab open — search runs in the background.</p>
+    <p class="small text-secondary mt-2 mb-0">Keep this tab open — press Esc or Cancel to stop.</p>
+    <button type="button" class="btn btn-outline-light btn-sm mt-3" id="btnCancelOptimizeOverlay">Cancel search</button>
   </div>
 </div>
 
@@ -486,6 +489,24 @@ function emblemIconHtml(em, grade, className = 'emblem-icon') {
 }
 const POOL_SAVE_VERSION = 1;
 let optimizeRunning = false;
+let searchCancelToken = null;
+
+class OptimizeCancelled extends Error {
+  constructor() {
+    super('Search cancelled');
+    this.name = 'OptimizeCancelled';
+  }
+}
+
+function checkSearchCancelled() {
+  if (searchCancelToken?.cancelled) throw new OptimizeCancelled();
+}
+
+function requestOptimizeCancel() {
+  if (!searchCancelToken || searchCancelToken.cancelled) return;
+  searchCancelToken.cancelled = true;
+  setSearchProgress(searchCancelToken.lastPct ?? 0, 'Cancelling…');
+}
 
 function yieldToBrowser() {
   return new Promise(resolve => setTimeout(resolve, 0));
@@ -517,12 +538,25 @@ function showSearchUI(active) {
   });
   const btns = [document.getElementById('btnOptimize'), document.getElementById('btnOptimizeFab')];
   btns.forEach(b => { if (b) b.disabled = active; });
+  ['btnCancelOptimize', 'btnCancelOptimizeFab', 'btnCancelOptimizeOverlay'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === 'btnCancelOptimizeOverlay') {
+      el.disabled = !active;
+    } else {
+      el.classList.toggle('d-none', !active);
+      el.disabled = false;
+    }
+  });
   if (!active) setSearchProgress(0, '');
 }
 
 async function tickProgress(pct, label) {
+  checkSearchCancelled();
+  if (searchCancelToken) searchCancelToken.lastPct = pct;
   setSearchProgress(pct, label);
   await yieldToBrowser();
+  checkSearchCancelled();
 }
 const EMBLEM_INDEX_BY_NAME = new Map(EMBLEMS.map((e, i) => [e.n, i]));
 
@@ -766,6 +800,12 @@ function initUI() {
   updateSearchEffortHint();
   document.getElementById('btnOptimize').onclick = runOptimize;
   document.getElementById('btnOptimizeFab').onclick = runOptimize;
+  ['btnCancelOptimize', 'btnCancelOptimizeFab', 'btnCancelOptimizeOverlay'].forEach(id => {
+    document.getElementById(id)?.addEventListener('click', requestOptimizeCancel);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && optimizeRunning) requestOptimizeCancel();
+  });
 
   const mpSpatk = document.querySelector('.max-priority[data-stat="spatk"]');
   const prHp = document.querySelector('.protect-stat[data-stat="hp"]');
@@ -1428,8 +1468,19 @@ function neededTotalsKey(totals, opts) {
   return parts.join('|');
 }
 
-function enumeratePartial(groups, k, start, loadout, out, maxOut, state) {
+function fmtSearchCount(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e4) return Math.round(n / 1000) + 'k';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return String(n);
+}
+
+async function enumeratePartialAsync(groups, k, start, loadout, out, maxOut, state) {
   if (out.length >= maxOut || state.aborted) return;
+  if (searchCancelToken?.cancelled) {
+    state.aborted = true;
+    return;
+  }
   if (state.start && state.maxMs && Date.now() - state.start > state.maxMs) {
     state.aborted = true;
     return;
@@ -1440,6 +1491,13 @@ function enumeratePartial(groups, k, start, loadout, out, maxOut, state) {
       totals: sumStats(loadout),
       names: new Set(loadout.map(x => x.name)),
     });
+    if (state.reportProgress) {
+      const now = Date.now();
+      if (out.length === 1 || out.length % 2500 === 0 || now - (state.lastReport || 0) > 120) {
+        state.lastReport = now;
+        await state.reportProgress(out.length, maxOut);
+      }
+    }
     return;
   }
   const need = k - loadout.length;
@@ -1448,27 +1506,38 @@ function enumeratePartial(groups, k, start, loadout, out, maxOut, state) {
     if (state.aborted) return;
     for (const c of groups[i].variants) {
       loadout.push(c);
-      enumeratePartial(groups, k, i + 1, loadout, out, maxOut, state);
+      await enumeratePartialAsync(groups, k, i + 1, loadout, out, maxOut, state);
       loadout.pop();
       if (out.length >= maxOut || state.aborted) return;
     }
   }
 }
 
-async function bruteForceTarget(pool, opts, slots, maxMs = 12000) {
+async function bruteForceTarget(pool, opts, slots, maxMs = 12000, onProgress) {
   const groups = groupPoolByName(pool);
   if (groups.length < slots) return null;
   let best = [];
   let bestErr = Infinity;
-  const state = { start: Date.now(), maxMs, lastYield: Date.now() };
+  const state = { start: Date.now(), maxMs, lastYield: Date.now(), checked: 0 };
+
+  async function reportBrute() {
+    if (!onProgress) return;
+    const elapsed = Date.now() - state.start;
+    const sub = Math.min(1, elapsed / Math.max(1, state.maxMs));
+    const bestLbl = bestErr < Infinity ? ` · best error ${bestErr.toFixed(2)}` : '';
+    await onProgress(sub, `Exact · brute force ${(elapsed / 1000).toFixed(0)}s${bestLbl}`);
+  }
 
   async function dfs(gi, loadout) {
+    if (searchCancelToken?.cancelled) return;
     if (Date.now() - state.start > state.maxMs) return;
     if (Date.now() - state.lastYield > 40) {
       state.lastYield = Date.now();
+      await reportBrute();
       await yieldToBrowser();
     }
     if (loadout.length === slots) {
+      state.checked++;
       if (!evaluate(loadout, 'target', opts).valid) return;
       const err = targetError(loadout, opts);
       if (err < bestErr - SCORE_EPS) {
@@ -1531,21 +1600,48 @@ function computeRestarts(poolLen, opts) {
   return { restarts: n, preset, useBudget: false };
 }
 
-async function searchTargetMITM(pool, opts, slots, limits) {
+async function searchTargetMITM(pool, opts, slots, limits, onProgress) {
   const groups = groupPoolByName(pool);
   const half = Math.floor(slots / 2);
+  const rightK = slots - half;
   const maxMs = limits?.mitmMs ?? 25000;
   const enumMax = limits?.enumMax ?? 3000000;
   const lookupCap = limits?.lookupCap ?? 200;
-  const state = { aborted: false, start: Date.now(), maxMs, lastYield: Date.now() };
-  const left = [];
-  const right = [];
-  enumeratePartial(groups, half, 0, [], left, enumMax, state);
-  if (state.aborted && !left.length) return null;
-  await yieldToBrowser();
-  enumeratePartial(groups, slots - half, 0, [], right, enumMax, state);
-  await yieldToBrowser();
+  const t0 = Date.now();
+  const report = async (sub, label) => {
+    if (onProgress) await onProgress(sub, label);
+  };
 
+  const left = [];
+  const enumState = {
+    aborted: false, start: t0, maxMs, lastReport: 0, lastYield: Date.now(),
+  };
+  enumState.reportProgress = async (count, max) => {
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
+    const cap = enumState.aborted ? ' · cap reached' : '';
+    const sub = 0.06 + 0.34 * Math.min(1, count / Math.max(1, max));
+    await report(sub, `Exact · ${half}-slot combos: ${fmtSearchCount(count)} / ${fmtSearchCount(max)} (${elapsed}s)${cap}`);
+  };
+  await report(0.02, `Exact · building ${half}-slot combinations (${groups.length} Pokémon)…`);
+  await enumeratePartialAsync(groups, half, 0, [], left, enumMax, enumState);
+  if (enumState.aborted && !left.length) return null;
+  checkSearchCancelled();
+
+  const right = [];
+  const enumStateR = {
+    aborted: false, start: t0, maxMs, lastReport: 0, lastYield: Date.now(),
+  };
+  enumStateR.reportProgress = async (count, max) => {
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(0);
+    const cap = enumStateR.aborted ? ' · cap reached' : '';
+    const sub = 0.42 + 0.33 * Math.min(1, count / Math.max(1, max));
+    await report(sub, `Exact · ${rightK}-slot combos: ${fmtSearchCount(count)} / ${fmtSearchCount(max)} (${elapsed}s)${cap}`);
+  };
+  await report(0.40, `Exact · ${fmtSearchCount(left.length)} left halves · building ${rightK}-slot side…`);
+  await enumeratePartialAsync(groups, rightK, 0, [], right, enumMax, enumStateR);
+  checkSearchCancelled();
+
+  await report(0.76, `Exact · indexing ${fmtSearchCount(left.length)} left halves…`);
   const index = new Map();
   for (const L of left) {
     const key = statTotalsKey(L.totals, opts);
@@ -1572,14 +1668,22 @@ async function searchTargetMITM(pool, opts, slots, limits) {
     return out.length ? out : null;
   }
 
+  const rightLen = Math.max(1, right.length);
   let ri = 0;
+  let lastMatchReport = 0;
   for (const R of right) {
-    if (Date.now() - state.start > state.maxMs) break;
-    if (Date.now() - state.lastYield > 35) {
-      state.lastYield = Date.now();
+    if (searchCancelToken?.cancelled) break;
+    if (Date.now() - t0 > maxMs) break;
+    ri++;
+    const now = Date.now();
+    if (now - lastMatchReport > 100) {
+      lastMatchReport = now;
+      const pct = Math.round((100 * ri) / rightLen);
+      const sub = 0.78 + 0.18 * (ri / rightLen);
+      const bestLbl = bestErr < Infinity ? ` · best error ${bestErr.toFixed(2)}` : '';
+      await report(sub, `Exact · matching ${pct}% (${fmtSearchCount(ri)}/${fmtSearchCount(right.length)})${bestLbl}`);
       await yieldToBrowser();
     }
-    ri++;
     const matches = lookupLeft(neededTotalsKey(R.totals, opts));
     if (!matches) continue;
     for (const L of matches) {
@@ -1599,31 +1703,49 @@ async function searchTargetMITM(pool, opts, slots, limits) {
     }
   }
 
+  if (best.length) {
+    await report(0.98, `Exact · MITM done · best error ${bestErr.toFixed(2)}`);
+  } else {
+    await report(0.98, 'Exact · MITM finished (no valid merge)');
+  }
   if (!best.length) return null;
   return { loadout: best, error: bestErr };
 }
 
-async function searchTargetExact(pool, opts, slots, limits, progress) {
+async function searchTargetExact(pool, opts, slots, limits, onExactProgress) {
   if (!limits?.useExact) return null;
+  const report = async (sub, label) => {
+    if (onExactProgress) await onExactProgress(sub, label);
+    checkSearchCancelled();
+  };
   const filterMax = limits.filterMax ?? 55;
-  if (progress) await progress(3, 'Filtering candidates for exact search…');
+  await report(0, 'Exact · filtering pool…');
   const filtered = filterPoolForTarget(pool, opts, slots, filterMax);
   const uniqueNames = new Set(filtered.map(c => c.name)).size;
+  const variants = filtered.length;
+  await report(0.04, `Exact · ${uniqueNames} Pokémon · ${variants} grade options`);
   const mitmLimits = { ...limits, lookupCap: limits.lookupCap ?? (limits.deepBrute ? 600 : 200) };
-  if (progress) await progress(5, 'Exact search (meet-in-the-middle)…');
-  const mitm = await searchTargetMITM(filtered, opts, slots, mitmLimits);
+  const mitm = await searchTargetMITM(filtered, opts, slots, mitmLimits, async (mitmSub, label) => {
+    await report(0.06 + mitmSub * 0.82, label);
+  });
+  checkSearchCancelled();
   let bf = null;
   const bruteMax = limits.bruteMaxNames ?? (limits.deepBrute ? 28 : 22);
   if (uniqueNames <= bruteMax && limits.bruteMs > 0) {
-    if (progress) await progress(8, 'Exact search (brute force)…');
-    bf = await bruteForceTarget(filtered, opts, slots, limits.bruteMs);
+    await report(0.90, `Exact · brute force on ${uniqueNames} Pokémon…`);
+    bf = await bruteForceTarget(filtered, opts, slots, limits.bruteMs, async (bruteSub, label) => {
+      await report(0.90 + bruteSub * 0.08, label);
+    });
   }
+  checkSearchCancelled();
   if (bf && bf.error <= SCORE_EPS) return bf;
   if (mitm && mitm.error <= SCORE_EPS) return mitm;
   if (!bf && !mitm) return null;
   if (!bf) return mitm;
   if (!mitm) return bf;
-  return bf.error <= mitm.error ? bf : mitm;
+  const pick = bf.error <= mitm.error ? bf : mitm;
+  await report(1, pick.error <= SCORE_EPS ? 'Exact · perfect match found' : `Exact · best error ${pick.error.toFixed(2)}`);
+  return pick;
 }
 
 function targetAwareSeed(pool, opts, slots) {
@@ -1837,6 +1959,9 @@ async function optimizeAsync(candidates, opts, progress) {
   searchMeta.rounds = preset.rounds;
   searchMeta.budgetMs = preset.budgetMs || 0;
   const tSearch0 = Date.now();
+  const useExactPhase = opts.mode === 'target' && STATS.some(s => opts.targetActive[s.id]) && preset.useExact;
+  const heuristicLo = useExactPhase ? 48 : 8;
+  const heuristicSpan = 100 - heuristicLo;
 
   function greedySeed() {
     const shuffled = shufflePool(pool);
@@ -1968,10 +2093,14 @@ async function optimizeAsync(candidates, opts, progress) {
       filterMax: opts.smartTargetPool ? Math.min(getTargetPoolCap(opts.searchEffort), 55) : (preset.filterMax ?? 55),
     };
     const tExact0 = Date.now();
-    const exact = await searchTargetExact(pool, opts, SLOTS, limits, progress);
+    const exactProgress = async (sub, label) => {
+      if (progress) await progress(2 + sub * (heuristicLo - 2), label);
+    };
+    const exact = await searchTargetExact(pool, opts, SLOTS, limits, exactProgress);
+    checkSearchCancelled();
     searchMeta.exactMs = Date.now() - tExact0;
     searchMeta.exact = true;
-    if (progress) await progress(10, 'Exact pass complete — heuristic search…');
+    if (progress) await progress(heuristicLo, 'Heuristic search…');
     if (exact?.loadout?.length === SLOTS) {
       const ev = evaluate(exact.loadout, opts.mode, opts);
       if (ev.valid) {
@@ -1985,13 +2114,14 @@ async function optimizeAsync(candidates, opts, progress) {
       }
     }
   } else if (progress) {
-    await progress(10, 'Searching random builds…');
+    await progress(heuristicLo, 'Searching random builds…');
   }
 
   if (useBudget && preset.budgetMs) {
     const t0 = Date.now();
     let tries = 0;
     while (Date.now() - t0 < preset.budgetMs && tries < (preset.maxTriesCap || 20000)) {
+      checkSearchCancelled();
       const sliceEnd = Date.now() + 48;
       while (Date.now() < t0 + preset.budgetMs && tries < (preset.maxTriesCap || 20000) && Date.now() < sliceEnd) {
         const res = runOneTry();
@@ -1999,9 +2129,9 @@ async function optimizeAsync(candidates, opts, progress) {
         tries++;
       }
       const elapsed = Date.now() - t0;
-      const pct = 10 + (elapsed / preset.budgetMs) * 85;
+      const pct = heuristicLo + (elapsed / preset.budgetMs) * heuristicSpan;
       if (progress) {
-        await progress(pct, `Searching… ${tries} tries · ${(elapsed / 1000).toFixed(0)}s / ${Math.round(preset.budgetMs / 1000)}s`);
+        await progress(pct, `Heuristic · ${tries} tries · ${(elapsed / 1000).toFixed(0)}s / ${Math.round(preset.budgetMs / 1000)}s`);
       } else {
         await yieldToBrowser();
       }
@@ -2012,8 +2142,10 @@ async function optimizeAsync(candidates, opts, progress) {
     const total = restarts * preset.rounds;
     let done = 0;
     for (let round = 0; round < preset.rounds; round++) {
+      checkSearchCancelled();
       let r = 0;
       while (r < restarts) {
+        checkSearchCancelled();
         const sliceEnd = Date.now() + 48;
         while (r < restarts && Date.now() < sliceEnd) {
           const res = runOneTry();
@@ -2021,9 +2153,9 @@ async function optimizeAsync(candidates, opts, progress) {
           r++;
           done++;
         }
-        const pct = 10 + (done / Math.max(1, total)) * 85;
+        const pct = heuristicLo + (done / Math.max(1, total)) * heuristicSpan;
         if (progress) {
-          await progress(pct, `Searching… ${done} / ~${total} tries`);
+          await progress(pct, `Heuristic · ${done} / ~${total} tries`);
         } else {
           await yieldToBrowser();
         }
@@ -2046,6 +2178,7 @@ async function optimizeAsync(candidates, opts, progress) {
     if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
   }
 
+  checkSearchCancelled();
   if (!searchMeta.elapsedMs) searchMeta.elapsedMs = Date.now() - tSearch0;
   if (progress) await progress(100, 'Finishing…');
   return { ...globalBest, searchMeta };
@@ -2225,6 +2358,7 @@ function runOptimize() {
 
   if (optimizeRunning) return;
 
+  searchCancelToken = { cancelled: false, lastPct: 0 };
   showSearchUI(true);
   setSearchProgress(0, 'Starting…');
 
@@ -2239,6 +2373,7 @@ function runOptimize() {
         const tiers = GRADE_ORDER.filter(t => GRADE_ORDER.indexOf(t) <= GRADE_ORDER.indexOf(getMaxGrade()));
         let ti = 0;
         for (const tier of tiers) {
+          checkSearchCancelled();
           const tierCands = buildCandidatesForTier(tier);
           if (new Set(tierCands.map(c => c.name)).size < 10) continue;
           await progress(5 + (ti / tiers.length) * 85, `Searching ${tier} tier…`);
@@ -2254,6 +2389,7 @@ function runOptimize() {
           return;
         }
       }
+      checkSearchCancelled();
       await progress(100, 'Done');
       renderResults(result);
       if (window.matchMedia('(max-width: 991.98px)').matches) {
@@ -2267,9 +2403,19 @@ function runOptimize() {
         document.getElementById('resultsBody')?.appendChild(hint);
       }
     } catch (err) {
+      if (err?.name === 'OptimizeCancelled') {
+        setSearchProgress(0, 'Search cancelled');
+        const body = document.getElementById('resultsBody');
+        if (body) {
+          body.innerHTML = '<p class="text-secondary mb-0">Search cancelled. Adjust settings and run Optimize again.</p>';
+        }
+        document.getElementById('totalsBody').innerHTML = '';
+        return;
+      }
       console.error(err);
       alert('Optimization failed: ' + (err?.message || err));
     } finally {
+      searchCancelToken = null;
       showSearchUI(false);
     }
   })();
