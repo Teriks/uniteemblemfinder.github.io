@@ -341,6 +341,11 @@
         <div class="card-body small">
           <p class="text-secondary mb-2">Enter equipped stat totals from the game. Any stat with a number is matched (checkboxes auto-enable on Optimize). Values are raw emblem sums — not color-set % bonuses. Smaller owned pools search faster. Each Optimize suggests a build — click again for alternates.</p>
           <div id="targetInputs"></div>
+          <div class="form-check form-switch mb-2 mt-3 pt-2 border-top border-secondary">
+            <input class="form-check-input" type="checkbox" id="smartTargetPool" checked>
+            <label class="form-check-label" for="smartTargetPool">Smart target pool</label>
+          </div>
+          <p class="small text-secondary mb-0" id="smartTargetPoolHint">Keeps stat archetypes that can reach your totals, drops dominated grades, and caps the Pokémon list for faster, better search.</p>
         </div>
       </div>
 
@@ -1209,6 +1214,107 @@ function groupOverallDist(g, opts, perSlot) {
   return dist;
 }
 
+function getSmartTargetPoolEnabled() {
+  return document.getElementById('smartTargetPool')?.checked ?? true;
+}
+
+function getTargetPoolCap(searchEffort) {
+  const caps = { quick: 50, normal: 65, thorough: 70, deep: 80, extreme: 90 };
+  return caps[searchEffort] || 65;
+}
+
+function isVariantUsefulForTarget(stats, opts, slots) {
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const tgt = opts.targets[s.id];
+    const v = stats[s.id] || 0;
+    const per = tgt / slots;
+    const tol = (s.id === 'crit' || s.id === 'cdr') ? 0.05 : 0.51;
+    if (Math.abs(tgt) <= tol) continue;
+    if (tgt > tol) {
+      const bigNeg = s.id === 'hp' ? 25 : (s.id === 'atk' || s.id === 'spatk' ? 2.5 : 0.55);
+      if (v < 0 && Math.abs(v) > Math.max(Math.abs(per) * 2.5, bigNeg)) return false;
+    }
+    if (tgt < -tol) {
+      const bigPos = s.id === 'hp' ? 20 : (s.id === 'atk' || s.id === 'spatk' ? 2 : 0.55);
+      if (v > tol && v > Math.max(Math.abs(per) * 2, bigPos)) return false;
+    }
+  }
+  return true;
+}
+
+function gradeDominates(statsA, statsB, opts, slots) {
+  let strictlyBetter = false;
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const per = opts.targets[s.id] / slots;
+    const da = Math.abs((statsA[s.id] || 0) - per);
+    const db = Math.abs((statsB[s.id] || 0) - per);
+    if (da > db + 1e-9) return false;
+    if (db > da + 1e-9) strictlyBetter = true;
+  }
+  return strictlyBetter;
+}
+
+function pruneDominatedGrades(pool, opts, slots) {
+  const groups = groupPoolByName(pool);
+  const out = [];
+  for (const g of groups) {
+    if (g.variants.length <= 1) {
+      out.push(...g.variants);
+      continue;
+    }
+    for (const c of g.variants) {
+      let dominated = false;
+      for (const o of g.variants) {
+        if (o === c) continue;
+        if (gradeDominates(o.stats, c.stats, opts, slots)) {
+          dominated = true;
+          break;
+        }
+      }
+      if (!dominated) out.push(c);
+    }
+  }
+  return out;
+}
+
+function refineCandidatesForTarget(candidates, opts, slots) {
+  if (opts.mode !== 'target' || !opts.smartTargetPool) return candidates;
+  if (!STATS.some(s => opts.targetActive[s.id])) return candidates;
+
+  let pool = candidates.filter(c => isVariantUsefulForTarget(c.stats, opts, slots));
+  pool = pruneDominatedGrades(pool, opts, slots);
+  if (new Set(pool.map(c => c.name)).size < 10) return candidates;
+
+  const cap = getTargetPoolCap(opts.searchEffort);
+  pool = filterPoolForTarget(pool, opts, slots, cap);
+  if (new Set(pool.map(c => c.name)).size < 10) return candidates;
+  return pool;
+}
+
+function canStillReachTargets(loadout, pool, opts, slots) {
+  const need = slots - loadout.length;
+  if (need <= 0) return true;
+  const usedNames = new Set(loadout.map(x => x.name));
+  const rem = pool.filter(c => !usedNames.has(c.name));
+  if (rem.length < need) return false;
+
+  const totals = sumStats(loadout);
+  for (const s of STATS) {
+    if (!opts.targetActive[s.id]) continue;
+    const tgt = opts.targets[s.id];
+    const tol = (s.id === 'crit' || s.id === 'cdr') ? 0.05 : 0.51;
+    const vals = rem.map(c => c.stats[s.id] || 0).sort((a, b) => b - a);
+    const maxAdd = vals.slice(0, need).reduce((sum, x) => sum + x, 0);
+    const minAdd = vals.slice(-need).reduce((sum, x) => sum + x, 0);
+    const cur = totals[s.id] || 0;
+    if (tgt > tol && cur + maxAdd < tgt - tol) return false;
+    if (tgt < -tol && cur + minAdd > tgt + tol) return false;
+  }
+  return true;
+}
+
 function addTargetArchetypes(essential, groups, opts, slots) {
   const perSlot = {};
   STATS.forEach(s => {
@@ -1530,6 +1636,7 @@ function targetAwareSeed(pool, opts, slots) {
     for (const c of pool) {
       if (names.has(c.name)) continue;
       const trial = [...loadout, c];
+      if (opts.smartTargetPool && !canStillReachTargets(trial, pool, opts, slots)) continue;
       if (!evaluate(trial, 'target', opts).valid) continue;
       const err = targetError(trial, opts);
       if (err < bestErr - SCORE_EPS || (Math.abs(err - bestErr) <= SCORE_EPS && (!best || compareCandidates(c, best) < 0))) {
@@ -1672,7 +1779,11 @@ function getOpts() {
     targetActive[s.id] = hasVal && use;
     targets[s.id] = hasVal ? parseFloat(raw) : 0;
   });
-  return { mode, colorBonuses, colorTargets, targets, targetActive, searchEffort: getSearchEffort() };
+  return {
+    mode, colorBonuses, colorTargets, targets, targetActive,
+    searchEffort: getSearchEffort(),
+    smartTargetPool: getSmartTargetPoolEnabled(),
+  };
 }
 
 function getSearchEffort() {
@@ -1691,6 +1802,9 @@ function updateSearchEffortHint() {
     if (preset.rounds > 1) parts.push(`${preset.rounds} rounds`);
   }
   if (preset.useExact) parts.push('long exact target pass first');
+  if (document.getElementById('optMode')?.value === 'target' && getSmartTargetPoolEnabled()) {
+    parts.push('smart target pool on');
+  }
   el.textContent = parts.join(' · ') + '.';
 }
 
@@ -1700,15 +1814,28 @@ function shufflePool(arr) {
 
 async function optimizeAsync(candidates, opts, progress) {
   const SLOTS = 10;
-  const pool = candidates.filter(() => true);
-  const { restarts, preset, useBudget } = computeRestarts(pool.length, opts);
+  let pool = candidates.filter(() => true);
   const searchMeta = {
     effort: opts.searchEffort || 'normal',
-    restarts: restarts ?? 0,
-    rounds: preset.rounds,
+    restarts: 0,
+    rounds: 0,
     exact: false,
-    budgetMs: preset.budgetMs || 0,
+    budgetMs: 0,
   };
+  if (opts.mode === 'target' && opts.smartTargetPool && STATS.some(s => opts.targetActive[s.id])) {
+    const refined = refineCandidatesForTarget(pool, opts, SLOTS);
+    const names = new Set(refined.map(c => c.name)).size;
+    if (names >= 10) {
+      pool = refined;
+      searchMeta.smartPool = true;
+      searchMeta.poolNames = names;
+      searchMeta.poolVariants = refined.length;
+    }
+  }
+  const { restarts, preset, useBudget } = computeRestarts(pool.length, opts);
+  searchMeta.restarts = restarts ?? 0;
+  searchMeta.rounds = preset.rounds;
+  searchMeta.budgetMs = preset.budgetMs || 0;
   const tSearch0 = Date.now();
 
   function greedySeed() {
@@ -1729,6 +1856,8 @@ async function optimizeAsync(candidates, opts, progress) {
       if (loadout.length >= SLOTS) break;
       if (names.has(c.name)) continue;
       const trial = [...loadout, c];
+      if (opts.mode === 'target' && opts.smartTargetPool &&
+          !canStillReachTargets(trial, pool, opts, SLOTS)) continue;
       const ev = evaluate(trial, opts.mode, opts);
       if (!ev.valid) continue;
       loadout.push(c);
@@ -1752,6 +1881,8 @@ async function optimizeAsync(candidates, opts, progress) {
           if (names.has(cand.name)) continue;
           const trial = best.slice();
           trial[slot] = cand;
+          if (opts.mode === 'target' && opts.smartTargetPool &&
+              !canStillReachTargets(trial, pool, opts, SLOTS)) continue;
           const ev = evaluate(trial, opts.mode, opts);
           if (ev.valid && isLoadoutBetter(ev, bestEv, trial, best, opts)) {
             best = trial;
@@ -1765,6 +1896,8 @@ async function optimizeAsync(candidates, opts, progress) {
         for (const cand of order) {
           if (names.has(cand.name)) continue;
           const trial = [...best, cand];
+          if (opts.mode === 'target' && opts.smartTargetPool &&
+              !canStillReachTargets(trial, pool, opts, SLOTS)) continue;
           const ev = evaluate(trial, opts.mode, opts);
           if (ev.valid && isLoadoutBetter(ev, bestEv, trial, best, opts)) {
             best = trial;
@@ -1806,6 +1939,8 @@ async function optimizeAsync(candidates, opts, progress) {
         if (L.length >= SLOTS) break;
         if (names.has(c.name)) continue;
         const trial = [...L, c];
+        if (opts.mode === 'target' && opts.smartTargetPool &&
+            !canStillReachTargets(trial, pool, opts, SLOTS)) continue;
         if (evaluate(trial, opts.mode, opts).valid) { L = trial; names.add(c.name); }
       }
     }
@@ -1826,7 +1961,12 @@ async function optimizeAsync(candidates, opts, progress) {
   let globalBest = { loadout: [], ev: { score: -1e12, error: Infinity } };
 
   if (opts.mode === 'target' && STATS.some(s => opts.targetActive[s.id]) && preset.useExact) {
-    const limits = { ...preset, deepBrute: !!preset.deepBrute, lookupCap: preset.deepBrute ? 600 : 200 };
+    const limits = {
+      ...preset,
+      deepBrute: !!preset.deepBrute,
+      lookupCap: preset.deepBrute ? 600 : 200,
+      filterMax: opts.smartTargetPool ? Math.min(getTargetPoolCap(opts.searchEffort), 55) : (preset.filterMax ?? 55),
+    };
     const tExact0 = Date.now();
     const exact = await searchTargetExact(pool, opts, SLOTS, limits, progress);
     searchMeta.exactMs = Date.now() - tExact0;
@@ -1970,6 +2110,10 @@ function renderResults(result) {
     if (searchMeta.exact) {
       sm += (searchMeta.exactError !== undefined && searchMeta.exactError <= SCORE_EPS)
         ? ' · exact match' : ' · exact pass (heuristic finish)';
+    }
+    if (searchMeta.smartPool && searchMeta.poolNames) {
+      sm += ` · smart pool ${searchMeta.poolNames} Pokémon`;
+      if (searchMeta.poolVariants) sm += ` (${searchMeta.poolVariants} variants)`;
     }
     html += `<p class="small text-secondary mt-1 mb-0">${sm}</p>`;
   }
