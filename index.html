@@ -88,7 +88,26 @@
     .grade-bronze{color:#cd7f32}.grade-silver{color:#c0c0c0}.grade-gold{color:#ffd700}
     .navbar-brand span { color: var(--accent); }
     .site-nav { padding-top: var(--safe-top); }
-    #progressBar { display: none; }
+    .opt-progress-wrap { display: none; }
+    .opt-progress-wrap.active { display: block; }
+    .opt-progress-label { min-height: 1.25rem; }
+    .optimize-overlay {
+      position: fixed; inset: 0; z-index: 2000;
+      background: rgba(15, 20, 25, 0.82);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .optimize-overlay[hidden] { display: none !important; }
+    .optimize-overlay-card {
+      width: min(22rem, 100%);
+      padding: 1.25rem 1.5rem;
+      border-radius: 12px;
+      background: #1a1f26;
+      border: 1px solid #2a2f36;
+      text-align: center;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+    }
+    .optimize-overlay-card .progress { height: 0.65rem; }
     .btn, .form-check-input, .form-select, .form-control { touch-action: manipulation; }
     .form-control, .form-select { font-size: 16px; }
     .btn-touch { min-height: var(--touch-min); }
@@ -287,6 +306,15 @@
             <option value="maximize">Maximize stats (protect others)</option>
             <option value="target">Match target stat totals</option>
           </select>
+          <label class="form-label">Search effort</label>
+          <select class="form-select mb-2" id="searchEffort">
+            <option value="quick">Quick — fastest, fewer random tries</option>
+            <option value="normal" selected>Normal — balanced</option>
+            <option value="thorough">Thorough — more tries + target exact pass</option>
+            <option value="deep">Deep — ~2 min search budget</option>
+            <option value="extreme">Extreme — ~5 min search budget</option>
+          </select>
+          <p class="small text-secondary mb-3" id="searchEffortHint">Normal uses many shuffled builds; raise effort if results look stuck or far from target.</p>
         </div>
       </div>
 
@@ -318,8 +346,11 @@
 
       <div class="optimize-sticky">
         <button type="button" class="btn btn-warning w-100 fw-bold btn-touch py-2" id="btnOptimize">Optimize Loadout</button>
-        <div class="progress mt-2" id="progressBar">
-          <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width:100%"></div>
+        <div class="opt-progress-wrap mt-2" id="progressBar">
+          <div class="opt-progress-label small text-secondary mb-1" id="progressLabel">Optimizing…</div>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning opt-progress-fill" style="width:0%"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -374,8 +405,22 @@
 
 <div class="optimize-fab" aria-hidden="false">
   <button type="button" class="btn btn-warning w-100 fw-bold btn-touch py-3" id="btnOptimizeFab">Optimize Loadout</button>
-  <div class="progress mt-2" id="progressBarFab" style="display:none">
-    <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" style="width:100%"></div>
+  <div class="opt-progress-wrap mt-2" id="progressBarFab">
+    <div class="opt-progress-label small text-secondary mb-1" id="progressLabelFab">Optimizing…</div>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning opt-progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+</div>
+
+<div id="optimizeOverlay" class="optimize-overlay" hidden>
+  <div class="optimize-overlay-card">
+    <div class="spinner-border text-warning mb-3" role="status" aria-hidden="true"></div>
+    <p class="mb-2 fw-semibold" id="optimizeOverlayLabel">Searching loadouts…</p>
+    <div class="progress w-100" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning opt-progress-fill" style="width:0%"></div>
+    </div>
+    <p class="small text-secondary mt-2 mb-0">Keep this tab open — search runs in the background.</p>
   </div>
 </div>
 
@@ -435,6 +480,45 @@ function emblemIconHtml(em, grade, className = 'emblem-icon') {
   return `<img class="${className}" src="${url}" alt="" width="${px}" height="${px}" decoding="async">`;
 }
 const POOL_SAVE_VERSION = 1;
+let optimizeRunning = false;
+
+function yieldToBrowser() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+function setSearchProgress(pct, label) {
+  const v = Math.min(100, Math.max(0, Math.round(pct)));
+  document.querySelectorAll('.opt-progress-fill').forEach(el => {
+    el.style.width = v + '%';
+    el.classList.toggle('bg-success', v >= 100);
+    el.classList.toggle('bg-warning', v < 100);
+  });
+  document.querySelectorAll('[role="progressbar"]').forEach(el => el.setAttribute('aria-valuenow', String(v)));
+  if (label) {
+    document.querySelectorAll('.opt-progress-label, #optimizeOverlayLabel').forEach(el => {
+      el.textContent = label;
+    });
+  }
+}
+
+function showSearchUI(active) {
+  optimizeRunning = active;
+  const overlay = document.getElementById('optimizeOverlay');
+  if (overlay) overlay.hidden = !active;
+  document.body.style.cursor = active ? 'wait' : '';
+  ['progressBar', 'progressBarFab'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', active);
+  });
+  const btns = [document.getElementById('btnOptimize'), document.getElementById('btnOptimizeFab')];
+  btns.forEach(b => { if (b) b.disabled = active; });
+  if (!active) setSearchProgress(0, '');
+}
+
+async function tickProgress(pct, label) {
+  setSearchProgress(pct, label);
+  await yieldToBrowser();
+}
 const EMBLEM_INDEX_BY_NAME = new Map(EMBLEMS.map((e, i) => [e.n, i]));
 
 function emblemGradesAvailable(emIdx) {
@@ -673,6 +757,8 @@ function initUI() {
     r.addEventListener('change', () => { syncPoolItemStates(); updatePoolCount(); })
   );
   document.getElementById('mixedGrades')?.addEventListener('change', updatePoolCount);
+  document.getElementById('searchEffort')?.addEventListener('change', updateSearchEffortHint);
+  updateSearchEffortHint();
   document.getElementById('btnOptimize').onclick = runOptimize;
   document.getElementById('btnOptimizeFab').onclick = runOptimize;
 
@@ -1263,15 +1349,19 @@ function enumeratePartial(groups, k, start, loadout, out, maxOut, state) {
   }
 }
 
-function bruteForceTarget(pool, opts, slots, maxMs = 12000) {
+async function bruteForceTarget(pool, opts, slots, maxMs = 12000) {
   const groups = groupPoolByName(pool);
   if (groups.length < slots) return null;
   let best = [];
   let bestErr = Infinity;
-  const state = { start: Date.now(), maxMs };
+  const state = { start: Date.now(), maxMs, lastYield: Date.now() };
 
-  function dfs(gi, loadout) {
+  async function dfs(gi, loadout) {
     if (Date.now() - state.start > state.maxMs) return;
+    if (Date.now() - state.lastYield > 40) {
+      state.lastYield = Date.now();
+      await yieldToBrowser();
+    }
     if (loadout.length === slots) {
       if (!evaluate(loadout, 'target', opts).valid) return;
       const err = targetError(loadout, opts);
@@ -1286,27 +1376,69 @@ function bruteForceTarget(pool, opts, slots, maxMs = 12000) {
     for (let i = gi; i < groups.length; i++) {
       for (const c of groups[i].variants) {
         loadout.push(c);
-        dfs(i + 1, loadout);
+        await dfs(i + 1, loadout);
         loadout.pop();
         if (bestErr <= SCORE_EPS) return;
       }
     }
   }
 
-  dfs(0, []);
+  await dfs(0, []);
   if (!best.length) return null;
   return { loadout: best, error: bestErr };
 }
 
-function searchTargetMITM(pool, opts, slots) {
+function getSearchPreset(effort) {
+  const presets = {
+    quick: { mult: 0.45, min: 15, max: 50, rounds: 1, useExact: false },
+    normal: { mult: 1, min: 30, max: 120, rounds: 1, useExact: false },
+    thorough: {
+      mult: 2.2, min: 80, max: 280, rounds: 2, useExact: true,
+      mitmMs: 45000, bruteMs: 25000, enumMax: 5000000, filterMax: 50,
+      targetSeedChance: 0.2, improvePasses: 2,
+    },
+    deep: {
+      mult: 1, min: 500, max: 500, rounds: 1, useExact: true,
+      mitmMs: 120000, bruteMs: 90000, enumMax: 12000000, filterMax: 55,
+      budgetMs: 120000, maxTriesCap: 12000, deepBrute: true, bruteMaxNames: 30,
+      targetSeedChance: 0.35, improvePasses: 3, polishTries: 80,
+    },
+    extreme: {
+      mult: 1, min: 500, max: 500, rounds: 1, useExact: true,
+      mitmMs: 240000, bruteMs: 150000, enumMax: 20000000, filterMax: 60,
+      budgetMs: 300000, maxTriesCap: 30000, deepBrute: true, bruteMaxNames: 34,
+      targetSeedChance: 0.45, improvePasses: 4, polishTries: 200,
+    },
+  };
+  return presets[effort] || presets.normal;
+}
+
+function computeRestarts(poolLen, opts) {
+  const preset = getSearchPreset(opts.searchEffort || 'normal');
+  if (preset.budgetMs) {
+    return { restarts: null, preset, useBudget: true };
+  }
+  let n = Math.floor((8000 / (poolLen + 1)) * preset.mult);
+  n = Math.min(preset.max, Math.max(preset.min, n));
+  if (opts.colorTargets) n = Math.max(n, Math.floor(preset.min * 1.6));
+  if (opts.mode === 'target') n = Math.max(n, Math.floor(preset.min * 1.2));
+  return { restarts: n, preset, useBudget: false };
+}
+
+async function searchTargetMITM(pool, opts, slots, limits) {
   const groups = groupPoolByName(pool);
   const half = Math.floor(slots / 2);
-  const state = { aborted: false, start: Date.now(), maxMs: 25000 };
+  const maxMs = limits?.mitmMs ?? 25000;
+  const enumMax = limits?.enumMax ?? 3000000;
+  const lookupCap = limits?.lookupCap ?? 200;
+  const state = { aborted: false, start: Date.now(), maxMs, lastYield: Date.now() };
   const left = [];
   const right = [];
-  enumeratePartial(groups, half, 0, [], left, 3000000, state);
+  enumeratePartial(groups, half, 0, [], left, enumMax, state);
   if (state.aborted && !left.length) return null;
-  enumeratePartial(groups, slots - half, 0, [], right, 3000000, state);
+  await yieldToBrowser();
+  enumeratePartial(groups, slots - half, 0, [], right, enumMax, state);
+  await yieldToBrowser();
 
   const index = new Map();
   for (const L of left) {
@@ -1329,13 +1461,19 @@ function searchTargetMITM(pool, opts, slots) {
         if (Math.abs(kp[i] - parts[i]) > 1) { ok = false; break; }
       }
       if (ok) out.push(...list);
-      if (out.length > 200) break;
+      if (out.length > lookupCap) break;
     }
     return out.length ? out : null;
   }
 
+  let ri = 0;
   for (const R of right) {
     if (Date.now() - state.start > state.maxMs) break;
+    if (Date.now() - state.lastYield > 35) {
+      state.lastYield = Date.now();
+      await yieldToBrowser();
+    }
+    ri++;
     const matches = lookupLeft(neededTotalsKey(R.totals, opts));
     if (!matches) continue;
     for (const L of matches) {
@@ -1359,13 +1497,20 @@ function searchTargetMITM(pool, opts, slots) {
   return { loadout: best, error: bestErr };
 }
 
-function searchTargetExact(pool, opts, slots) {
-  const filtered = filterPoolForTarget(pool, opts, slots, 55);
+async function searchTargetExact(pool, opts, slots, limits, progress) {
+  if (!limits?.useExact) return null;
+  const filterMax = limits.filterMax ?? 55;
+  if (progress) await progress(3, 'Filtering candidates for exact search…');
+  const filtered = filterPoolForTarget(pool, opts, slots, filterMax);
   const uniqueNames = new Set(filtered.map(c => c.name)).size;
-  const mitm = searchTargetMITM(filtered, opts, slots);
+  const mitmLimits = { ...limits, lookupCap: limits.lookupCap ?? (limits.deepBrute ? 600 : 200) };
+  if (progress) await progress(5, 'Exact search (meet-in-the-middle)…');
+  const mitm = await searchTargetMITM(filtered, opts, slots, mitmLimits);
   let bf = null;
-  if (uniqueNames <= 22) {
-    bf = bruteForceTarget(filtered, opts, slots, 20000);
+  const bruteMax = limits.bruteMaxNames ?? (limits.deepBrute ? 28 : 22);
+  if (uniqueNames <= bruteMax && limits.bruteMs > 0) {
+    if (progress) await progress(8, 'Exact search (brute force)…');
+    bf = await bruteForceTarget(filtered, opts, slots, limits.bruteMs);
   }
   if (bf && bf.error <= SCORE_EPS) return bf;
   if (mitm && mitm.error <= SCORE_EPS) return mitm;
@@ -1516,7 +1661,7 @@ function getOpts() {
         protected[s.id] = parseFloat(document.querySelector(`.protect-min[data-stat="${s.id}"]`).value) || 0;
       }
     });
-    return { mode, colorBonuses, colorTargets, priorities, weights, protected };
+    return { mode, colorBonuses, colorTargets, priorities, weights, protected, searchEffort: getSearchEffort() };
   }
   const targets = {}, targetActive = {};
   STATS.forEach(s => {
@@ -1527,19 +1672,51 @@ function getOpts() {
     targetActive[s.id] = hasVal && use;
     targets[s.id] = hasVal ? parseFloat(raw) : 0;
   });
-  return { mode, colorBonuses, colorTargets, targets, targetActive };
+  return { mode, colorBonuses, colorTargets, targets, targetActive, searchEffort: getSearchEffort() };
+}
+
+function getSearchEffort() {
+  return document.getElementById('searchEffort')?.value || 'normal';
+}
+
+function updateSearchEffortHint() {
+  const el = document.getElementById('searchEffortHint');
+  if (!el) return;
+  const preset = getSearchPreset(getSearchEffort());
+  const parts = [];
+  if (preset.budgetMs) {
+    parts.push(`runs up to ~${Math.round(preset.budgetMs / 1000)}s of random search`);
+  } else {
+    parts.push(`~${preset.min}–${preset.max} random builds per round`);
+    if (preset.rounds > 1) parts.push(`${preset.rounds} rounds`);
+  }
+  if (preset.useExact) parts.push('long exact target pass first');
+  el.textContent = parts.join(' · ') + '.';
 }
 
 function shufflePool(arr) {
   return [...arr].sort(() => Math.random() - 0.5);
 }
 
-function optimize(candidates, opts) {
+async function optimizeAsync(candidates, opts, progress) {
   const SLOTS = 10;
   const pool = candidates.filter(() => true);
+  const { restarts, preset, useBudget } = computeRestarts(pool.length, opts);
+  const searchMeta = {
+    effort: opts.searchEffort || 'normal',
+    restarts: restarts ?? 0,
+    rounds: preset.rounds,
+    exact: false,
+    budgetMs: preset.budgetMs || 0,
+  };
+  const tSearch0 = Date.now();
 
   function greedySeed() {
     const shuffled = shufflePool(pool);
+    if (opts.mode === 'target' && preset.targetSeedChance && Math.random() < preset.targetSeedChance) {
+      const seeded = targetAwareSeed(shuffled, opts, SLOTS);
+      if (seeded.length === SLOTS && evaluate(seeded, opts.mode, opts).valid) return seeded;
+    }
     if (opts.colorTargets) {
       const seeded = colorAwareSeed(shuffled, opts, SLOTS);
       if (seeded.length === SLOTS && colorsMatchTargets(countColors(seeded), opts.colorTargets)) {
@@ -1560,17 +1737,18 @@ function optimize(candidates, opts) {
     return loadout;
   }
 
-  function improve(loadout) {
+  function improve(loadout, candidateOrder) {
     let best = loadout.slice();
     let bestEv = evaluate(best, opts.mode, opts);
     if (!bestEv.valid) bestEv = { score: -1e12 };
+    const order = candidateOrder || pool;
 
     let improved = true;
     while (improved) {
       improved = false;
       for (let slot = 0; slot < best.length; slot++) {
         const names = new Set(best.map((x, i) => i === slot ? null : x.name).filter(Boolean));
-        for (const cand of pool) {
+        for (const cand of order) {
           if (names.has(cand.name)) continue;
           const trial = best.slice();
           trial[slot] = cand;
@@ -1584,7 +1762,7 @@ function optimize(candidates, opts) {
       }
       if (best.length < SLOTS) {
         const names = new Set(best.map(x => x.name));
-        for (const cand of pool) {
+        for (const cand of order) {
           if (names.has(cand.name)) continue;
           const trial = [...best, cand];
           const ev = evaluate(trial, opts.mode, opts);
@@ -1600,12 +1778,27 @@ function optimize(candidates, opts) {
     return { loadout: best, ev: bestEv };
   }
 
-  let globalBest = { loadout: [], ev: { score: -1e12, error: Infinity } };
-  const baseRestarts = Math.min(120, Math.max(30, Math.floor(8000 / (pool.length + 1))));
-  let restarts = opts.colorTargets ? Math.max(baseRestarts, 80) : baseRestarts;
-  if (opts.mode === 'target') restarts = Math.max(restarts, 60);
+  function polishLoadout(loadout) {
+    if (!preset.polishTries || loadout.length < SLOTS) return loadout;
+    let best = loadout.slice();
+    let bestEv = evaluate(best, opts.mode, opts);
+    for (let t = 0; t < preset.polishTries; t++) {
+      const slot = Math.floor(Math.random() * SLOTS);
+      const names = new Set(best.map((x, i) => i === slot ? null : x.name).filter(Boolean));
+      const cand = pool[Math.floor(Math.random() * pool.length)];
+      if (names.has(cand.name)) continue;
+      const trial = best.slice();
+      trial[slot] = cand;
+      const ev = evaluate(trial, opts.mode, opts);
+      if (ev.valid && isLoadoutBetter(ev, bestEv, trial, best, opts)) {
+        best = trial;
+        bestEv = ev;
+      }
+    }
+    return best;
+  }
 
-  for (let r = 0; r < restarts; r++) {
+  function runOneTry() {
     let L = greedySeed();
     if (L.length < SLOTS) {
       const names = new Set(L.map(x => x.name));
@@ -1616,8 +1809,88 @@ function optimize(candidates, opts) {
         if (evaluate(trial, opts.mode, opts).valid) { L = trial; names.add(c.name); }
       }
     }
-    const res = improve(L);
-    if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
+    const passes = preset.improvePasses || 1;
+    let best = L;
+    let bestEv = evaluate(best, opts.mode, opts);
+    for (let p = 0; p < passes; p++) {
+      const res = improve(best, p > 0 ? shufflePool(pool) : pool);
+      if (res.ev.valid && isLoadoutBetter(res.ev, bestEv, res.loadout, best, opts)) {
+        best = res.loadout;
+        bestEv = res.ev;
+      }
+    }
+    best = polishLoadout(best);
+    return { loadout: best, ev: evaluate(best, opts.mode, opts) };
+  }
+
+  let globalBest = { loadout: [], ev: { score: -1e12, error: Infinity } };
+
+  if (opts.mode === 'target' && STATS.some(s => opts.targetActive[s.id]) && preset.useExact) {
+    const limits = { ...preset, deepBrute: !!preset.deepBrute, lookupCap: preset.deepBrute ? 600 : 200 };
+    const tExact0 = Date.now();
+    const exact = await searchTargetExact(pool, opts, SLOTS, limits, progress);
+    searchMeta.exactMs = Date.now() - tExact0;
+    searchMeta.exact = true;
+    if (progress) await progress(10, 'Exact pass complete — heuristic search…');
+    if (exact?.loadout?.length === SLOTS) {
+      const ev = evaluate(exact.loadout, opts.mode, opts);
+      if (ev.valid) {
+        globalBest = { loadout: exact.loadout, ev };
+        searchMeta.exactError = exact.error;
+        if (exact.error <= SCORE_EPS) {
+          if (progress) await progress(100, 'Done — exact match');
+          searchMeta.elapsedMs = Date.now() - tSearch0;
+          return { ...globalBest, searchMeta };
+        }
+      }
+    }
+  } else if (progress) {
+    await progress(10, 'Searching random builds…');
+  }
+
+  if (useBudget && preset.budgetMs) {
+    const t0 = Date.now();
+    let tries = 0;
+    while (Date.now() - t0 < preset.budgetMs && tries < (preset.maxTriesCap || 20000)) {
+      const sliceEnd = Date.now() + 48;
+      while (Date.now() < t0 + preset.budgetMs && tries < (preset.maxTriesCap || 20000) && Date.now() < sliceEnd) {
+        const res = runOneTry();
+        if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
+        tries++;
+      }
+      const elapsed = Date.now() - t0;
+      const pct = 10 + (elapsed / preset.budgetMs) * 85;
+      if (progress) {
+        await progress(pct, `Searching… ${tries} tries · ${(elapsed / 1000).toFixed(0)}s / ${Math.round(preset.budgetMs / 1000)}s`);
+      } else {
+        await yieldToBrowser();
+      }
+    }
+    searchMeta.restarts = tries;
+    searchMeta.elapsedMs = Date.now() - t0;
+  } else {
+    const total = restarts * preset.rounds;
+    let done = 0;
+    for (let round = 0; round < preset.rounds; round++) {
+      let r = 0;
+      while (r < restarts) {
+        const sliceEnd = Date.now() + 48;
+        while (r < restarts && Date.now() < sliceEnd) {
+          const res = runOneTry();
+          if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
+          r++;
+          done++;
+        }
+        const pct = 10 + (done / Math.max(1, total)) * 85;
+        if (progress) {
+          await progress(pct, `Searching… ${done} / ~${total} tries`);
+        } else {
+          await yieldToBrowser();
+        }
+      }
+    }
+    searchMeta.restarts = done;
+    searchMeta.elapsedMs = Date.now() - tSearch0;
   }
 
   if (globalBest.loadout.length < SLOTS && pool.length >= SLOTS) {
@@ -1629,11 +1902,13 @@ function optimize(candidates, opts) {
       const trial = [...L, c];
       if (evaluate(trial, opts.mode, opts).valid) { L.push(c); names.add(c.name); }
     }
-    const res = improve(L);
+    const res = improve(L, shufflePool(pool));
     if (isLoadoutBetter(res.ev, globalBest.ev, res.loadout, globalBest.loadout, opts)) globalBest = res;
   }
 
-  return globalBest;
+  if (!searchMeta.elapsedMs) searchMeta.elapsedMs = Date.now() - tSearch0;
+  if (progress) await progress(100, 'Finishing…');
+  return { ...globalBest, searchMeta };
 }
 
 function fmtStat(v, id) {
@@ -1643,7 +1918,7 @@ function fmtStat(v, id) {
 }
 
 function renderResults(result) {
-  const { loadout, ev } = result;
+  const { loadout, ev, searchMeta } = result;
   const body = document.getElementById('resultsBody');
   if (!loadout.length) {
     body.innerHTML = '<p class="text-danger">No valid loadout found. Expand your pool, relax protected stat limits, or adjust color count targets.</p>';
@@ -1684,6 +1959,19 @@ function renderResults(result) {
     html += `<p class="small mt-2 ${match ? 'stat-pos' : 'text-warning'}">` +
       (match ? 'All target stats matched (within tolerance).' : `Target mismatch score: ${ev.error.toFixed(2)} — see totals below.`) +
       '</p>';
+  }
+  if (searchMeta) {
+    const effortLabel = { quick: 'Quick', normal: 'Normal', thorough: 'Thorough', deep: 'Deep', extreme: 'Extreme' }[searchMeta.effort] || searchMeta.effort;
+    let sm = `Search: ${effortLabel} · ${searchMeta.restarts} tries`;
+    if (searchMeta.exactMs) sm += ` · exact ${(searchMeta.exactMs / 1000).toFixed(1)}s`;
+    if (searchMeta.elapsedMs) sm += ` · heuristic ${(searchMeta.elapsedMs / 1000).toFixed(1)}s`;
+    if (searchMeta.budgetMs) sm += ` (budget ${Math.round(searchMeta.budgetMs / 1000)}s)`;
+    if (!searchMeta.budgetMs && searchMeta.rounds > 1) sm += ` × ${searchMeta.rounds} rounds`;
+    if (searchMeta.exact) {
+      sm += (searchMeta.exactError !== undefined && searchMeta.exactError <= SCORE_EPS)
+        ? ' · exact match' : ' · exact pass (heuristic finish)';
+    }
+    html += `<p class="small text-secondary mt-1 mb-0">${sm}</p>`;
   }
   body.innerHTML = html;
 
@@ -1791,40 +2079,56 @@ function runOptimize() {
     }
   }
 
-  const bars = [document.getElementById('progressBar'), document.getElementById('progressBarFab')];
-  const btns = [document.getElementById('btnOptimize'), document.getElementById('btnOptimizeFab')];
-  bars.forEach(b => { if (b) b.style.display = 'block'; });
-  btns.forEach(b => { if (b) b.disabled = true; });
+  if (optimizeRunning) return;
 
-  setTimeout(() => {
-    let result;
-    if (mixed) {
-      result = optimize(candidates, opts);
-    } else {
-      let best = { loadout: [], ev: { score: -1e12, error: Infinity } };
-      for (const tier of GRADE_ORDER) {
-        if (GRADE_ORDER.indexOf(tier) > GRADE_ORDER.indexOf(getMaxGrade())) continue;
-        const tierCands = buildCandidatesForTier(tier);
-        const names = new Set(tierCands.map(c => c.name));
-        if (names.size < 10) continue;
-        const res = optimize(tierCands, opts);
-        if (isLoadoutBetter(res.ev, best.ev, res.loadout, best.loadout, opts)) best = res;
+  showSearchUI(true);
+  setSearchProgress(0, 'Starting…');
+
+  (async () => {
+    try {
+      let result;
+      const progress = tickProgress;
+      if (mixed) {
+        result = await optimizeAsync(candidates, opts, progress);
+      } else {
+        let best = { loadout: [], ev: { score: -1e12, error: Infinity } };
+        const tiers = GRADE_ORDER.filter(t => GRADE_ORDER.indexOf(t) <= GRADE_ORDER.indexOf(getMaxGrade()));
+        let ti = 0;
+        for (const tier of tiers) {
+          const tierCands = buildCandidatesForTier(tier);
+          if (new Set(tierCands.map(c => c.name)).size < 10) continue;
+          await progress(5 + (ti / tiers.length) * 85, `Searching ${tier} tier…`);
+          const res = await optimizeAsync(tierCands, opts, (pct, label) =>
+            progress(5 + ((ti + pct / 100) / tiers.length) * 85, label || `${tier} tier`)
+          );
+          if (isLoadoutBetter(res.ev, best.ev, res.loadout, best.loadout, opts)) best = res;
+          ti++;
+        }
+        result = best;
+        if (!result.loadout.length) {
+          alert('Could not build a full loadout at any single grade tier. Try mixed grades or mark more B/S/G ownership.');
+          return;
+        }
       }
-      result = best;
-      if (!result.loadout.length) {
-        alert('Could not build a full loadout at any single grade tier. Try mixed grades or mark more B/S/G ownership.');
-        bars.forEach(b => { if (b) b.style.display = 'none'; });
-        btns.forEach(b => { if (b) b.disabled = false; });
-        return;
+      await progress(100, 'Done');
+      renderResults(result);
+      if (window.matchMedia('(max-width: 991.98px)').matches) {
+        document.getElementById('resultsCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+      if (result.searchMeta && document.getElementById('optMode')?.value === 'target' &&
+          result.ev?.error > SCORE_EPS && !['deep', 'extreme'].includes(getSearchEffort())) {
+        const hint = document.createElement('p');
+        hint.className = 'small text-secondary mt-2 mb-0';
+        hint.textContent = 'Still off target? Try Search effort: Thorough or Deep, or click Optimize again for another build.';
+        document.getElementById('resultsBody')?.appendChild(hint);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Optimization failed: ' + (err?.message || err));
+    } finally {
+      showSearchUI(false);
     }
-    renderResults(result);
-    bars.forEach(b => { if (b) b.style.display = 'none'; });
-    btns.forEach(b => { if (b) b.disabled = false; });
-    if (window.matchMedia('(max-width: 991.98px)').matches) {
-      document.getElementById('resultsCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  }, 30);
+  })();
 }
 
 document.addEventListener('DOMContentLoaded', initUI);
