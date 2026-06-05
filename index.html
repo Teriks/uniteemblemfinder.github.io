@@ -584,6 +584,24 @@ function defaultOwnedForEmblem(emIdx) {
   ownedGrades.set(emIdx, s.size ? s : new Set(avail));
 }
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function showOptimizeIssue(msg, kind = 'error') {
+  const tone = { error: 'danger', warning: 'warning', info: 'info', success: 'success' }[kind] || 'danger';
+  const body = document.getElementById('resultsBody');
+  if (body) {
+    body.innerHTML = `<div class="alert alert-${tone} mb-0 py-2 small" role="alert">${escapeHtml(msg)}</div>`;
+  }
+  document.getElementById('totalsBody').innerHTML = '';
+  document.getElementById('resultsCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function setPoolImportStatus(msg, isError) {
   const el = document.getElementById('poolImportStatus');
   if (!el) return;
@@ -720,7 +738,7 @@ function initUI() {
     tgtDiv.innerHTML += `
       <div class="row g-1 align-items-center mb-2">
         <div class="col-1">
-          <input class="form-check-input target-use" type="checkbox" data-stat="${s.id}" id="tu_${s.id}" checked>
+          <input class="form-check-input target-use" type="checkbox" data-stat="${s.id}" id="tu_${s.id}">
         </div>
         <div class="col-4"><label for="tu_${s.id}">${s.label}</label></div>
         <div class="col-7">
@@ -1333,6 +1351,14 @@ function refineCandidatesForTarget(candidates, opts, slots) {
   return pool;
 }
 
+function boundStatAdd(rem, statId, need, direction) {
+  const vals = rem.map(c => c.stats[statId] || 0);
+  const picked = direction === 'max'
+    ? vals.filter(v => v > 0).sort((a, b) => b - a)
+    : vals.filter(v => v < 0).sort((a, b) => a - b);
+  return picked.slice(0, need).reduce((sum, x) => sum + x, 0);
+}
+
 function canStillReachTargets(loadout, pool, opts, slots) {
   const need = slots - loadout.length;
   if (need <= 0) return true;
@@ -1345,12 +1371,15 @@ function canStillReachTargets(loadout, pool, opts, slots) {
     if (!opts.targetActive[s.id]) continue;
     const tgt = opts.targets[s.id];
     const tol = (s.id === 'crit' || s.id === 'cdr') ? 0.05 : 0.51;
-    const vals = rem.map(c => c.stats[s.id] || 0).sort((a, b) => b - a);
-    const maxAdd = vals.slice(0, need).reduce((sum, x) => sum + x, 0);
-    const minAdd = vals.slice(-need).reduce((sum, x) => sum + x, 0);
     const cur = totals[s.id] || 0;
-    if (tgt > tol && cur + maxAdd < tgt - tol) return false;
-    if (tgt < -tol && cur + minAdd > tgt + tol) return false;
+    if (tgt > tol) {
+      const maxAdd = boundStatAdd(rem, s.id, need, 'max');
+      if (cur + maxAdd < tgt - tol) return false;
+    }
+    if (tgt < -tol) {
+      const minAdd = boundStatAdd(rem, s.id, need, 'min');
+      if (cur + minAdd > tgt + tol) return false;
+    }
   }
   return true;
 }
@@ -2191,11 +2220,17 @@ function fmtStat(v, id) {
 }
 
 function renderResults(result) {
+  if (!result?.ev) {
+    showOptimizeIssue('Optimization finished without a valid result. Try again or lower search constraints.', 'error');
+    return;
+  }
   const { loadout, ev, searchMeta } = result;
   const body = document.getElementById('resultsBody');
   if (!loadout.length) {
-    body.innerHTML = '<p class="text-danger">No valid loadout found. Expand your pool, relax protected stat limits, or adjust color count targets.</p>';
-    document.getElementById('totalsBody').innerHTML = '';
+    showOptimizeIssue(
+      'No valid loadout found. Expand your pool, relax protected stat limits, or adjust color count targets.',
+      'warning'
+    );
     return;
   }
 
@@ -2301,18 +2336,24 @@ function runOptimize() {
   const mixed = document.getElementById('mixedGrades')?.checked ?? true;
   const stats = getSearchPoolStats();
   if (!mixed && !stats.viableTiers.length) {
-    alert('Single-tier mode needs at least 10 Pokémon with the same owned grade (all B, all S, or all G). Mark more grades or enable mixed grades.');
+    showOptimizeIssue(
+      'Single-tier mode needs at least 10 Pokémon with the same owned grade (all B, all S, or all G). Mark more grades or enable mixed grades.'
+    );
     return;
   }
   const candidates = buildCandidates();
   if (candidates) {
     if (candidates.length < 10) {
-      alert('Need at least 10 usable grade options: select more Pokémon, mark grades you own (B/S/G), and check max grade settings.');
+      showOptimizeIssue(
+        'Need at least 10 usable grade options: select more Pokémon, mark grades you own (B/S/G), and check max grade settings.'
+      );
       return;
     }
     const uniqueNames = new Set(candidates.map(c => c.name));
     if (uniqueNames.size < 10) {
-      alert(`Only ${uniqueNames.size} Pokémon have owned grades — enable more emblems or mark additional B/S/G grades you possess.`);
+      showOptimizeIssue(
+        `Only ${uniqueNames.size} Pokémon have owned grades — enable more emblems or mark additional B/S/G grades you possess.`
+      );
       return;
     }
   }
@@ -2320,10 +2361,9 @@ function runOptimize() {
     STATS.forEach(s => {
       const inp = document.querySelector(`.target-val[data-stat="${s.id}"]`);
       const raw = (inp?.value ?? '').trim();
-      if (raw !== '' && !isNaN(parseFloat(raw))) {
-        const cb = document.querySelector(`.target-use[data-stat="${s.id}"]`);
-        if (cb) cb.checked = true;
-      }
+      const hasVal = raw !== '' && !isNaN(parseFloat(raw));
+      const cb = document.querySelector(`.target-use[data-stat="${s.id}"]`);
+      if (cb) cb.checked = hasVal;
     });
   }
   const opts = getOpts();
@@ -2331,7 +2371,10 @@ function runOptimize() {
   const hasTgt = opts.mode === 'target' && STATS.some(s => opts.targetActive[s.id]);
   const hasColors = !!opts.colorTargets;
   if (!hasMax && !hasTgt && !hasColors) {
-    alert('Enable at least one stat to maximize, set target values, or require color counts.');
+    const msg = opts.mode === 'target'
+      ? 'Enter at least one target stat value (e.g. HP, Sp. Atk) in the Target panel, or enable color counts.'
+      : 'Enable at least one stat to maximize, set target values, or require color counts.';
+    showOptimizeIssue(msg);
     return;
   }
   if (opts.colorTargets) {
@@ -2351,12 +2394,15 @@ function runOptimize() {
       }
     }
     if (colorErr) {
-      alert(colorErr);
+      showOptimizeIssue(colorErr);
       return;
     }
   }
 
-  if (optimizeRunning) return;
+  if (optimizeRunning) {
+    showOptimizeIssue('A search is already running. Use Cancel or wait for it to finish.', 'info');
+    return;
+  }
 
   searchCancelToken = { cancelled: false, lastPct: 0 };
   showSearchUI(true);
@@ -2385,7 +2431,9 @@ function runOptimize() {
         }
         result = best;
         if (!result.loadout.length) {
-          alert('Could not build a full loadout at any single grade tier. Try mixed grades or mark more B/S/G ownership.');
+          showOptimizeIssue(
+            'Could not build a full loadout at any single grade tier. Try mixed grades or mark more B/S/G ownership.'
+          );
           return;
         }
       }
@@ -2405,15 +2453,11 @@ function runOptimize() {
     } catch (err) {
       if (err?.name === 'OptimizeCancelled') {
         setSearchProgress(0, 'Search cancelled');
-        const body = document.getElementById('resultsBody');
-        if (body) {
-          body.innerHTML = '<p class="text-secondary mb-0">Search cancelled. Adjust settings and run Optimize again.</p>';
-        }
-        document.getElementById('totalsBody').innerHTML = '';
+        showOptimizeIssue('Search cancelled. Adjust settings and run Optimize again.', 'info');
         return;
       }
       console.error(err);
-      alert('Optimization failed: ' + (err?.message || err));
+      showOptimizeIssue('Optimization failed: ' + (err?.message || err));
     } finally {
       searchCancelToken = null;
       showSearchUI(false);
