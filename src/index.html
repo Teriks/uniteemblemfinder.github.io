@@ -63,7 +63,10 @@
       </div>
 
       <div class="card bg-dark border-secondary mt-3" id="colorTargetsPanel">
-        <div class="card-header">Color counts (10 slots)</div>
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+          <span>Color counts (10 slots)</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm section-reset-btn" id="btnResetColors" title="Clear color targets">Reset</button>
+        </div>
         <div class="card-body small">
           <p class="text-secondary mb-2">Each slot adds 1 toward every color on that emblem (dual-color counts twice).</p>
           <div class="form-check form-switch mb-2">
@@ -77,7 +80,10 @@
       </div>
 
       <div class="card bg-dark border-secondary mt-3" id="maximizePanel">
-        <div class="card-header">Maximize — priorities &amp; soft protect</div>
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+          <span>Maximize — priorities &amp; soft protect</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm section-reset-btn" id="btnResetMaximize" title="Clear maximize and protect settings">Reset</button>
+        </div>
         <div class="card-body small">
           <p class="text-secondary mb-2">Maximize finds the highest total for checked stats. Protect softly penalizes going below the prefer value — it does not block builds.</p>
           <div id="maximizeInputs"></div>
@@ -85,7 +91,10 @@
       </div>
 
       <div class="card bg-dark border-secondary mt-3 d-none" id="targetPanel">
-        <div class="card-header">Target — desired totals (10 slots)</div>
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+          <span>Target — desired totals (10 slots)</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm section-reset-btn" id="btnResetTarget" title="Clear target stat values">Reset</button>
+        </div>
         <div class="card-body small">
           <p class="text-secondary mb-2">Enter equipped stat totals from the game. Any stat with a number is matched (checkboxes auto-enable on Optimize). Values are raw emblem sums — not color-set % bonuses. Smaller owned pools search faster. Each Optimize suggests a build — click again for alternates.</p>
           <div id="targetInputs"></div>

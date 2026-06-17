@@ -190,6 +190,14 @@
       display: none;
     }
     .card-header { flex-wrap: wrap; gap: 0.35rem; }
+    .section-reset-btn {
+      flex-shrink: 0;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      line-height: 1.2;
+      opacity: 0.85;
+    }
+    .section-reset-btn:hover { opacity: 1; }
     #poolCount { max-width: 100%; white-space: normal; text-align: right; line-height: 1.2; }
     @media (min-width: 992px) {
       body {

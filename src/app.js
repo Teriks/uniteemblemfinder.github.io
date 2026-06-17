@@ -657,6 +657,28 @@ function statLabel(id) {
   return STATS.find(s => s.id === id)?.label || id;
 }
 
+function resetColorTargets() {
+  document.getElementById('useColorTargets').checked = false;
+  document.querySelectorAll('.color-target-use').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.color-target-val').forEach(inp => { inp.value = '0'; });
+  updateColorTargetSummary();
+}
+
+function resetMaximizeSection() {
+  document.querySelectorAll('.max-priority').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.max-weight').forEach(inp => { inp.value = '1'; });
+  document.querySelectorAll('.protect-stat').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.protect-min').forEach(inp => { inp.value = '0'; });
+  updateColorTargetSummary();
+}
+
+function resetTargetSection() {
+  document.querySelectorAll('.target-use').forEach(cb => { cb.checked = false; });
+  document.querySelectorAll('.target-val').forEach(inp => { inp.value = ''; });
+  const smart = document.getElementById('smartTargetPool');
+  if (smart) smart.checked = true;
+}
+
 function initUI() {
   const maxDiv = document.getElementById('maximizeInputs');
   const tgtDiv = document.getElementById('targetInputs');
@@ -782,8 +804,9 @@ function initUI() {
     if (e.key === 'Escape' && optimizeRunning) requestOptimizeCancel();
   });
 
-  const mpSpatk = document.querySelector('.max-priority[data-stat="spatk"]');
-  if (mpSpatk) mpSpatk.checked = true;
+  document.getElementById('btnResetColors')?.addEventListener('click', resetColorTargets);
+  document.getElementById('btnResetMaximize')?.addEventListener('click', resetMaximizeSection);
+  document.getElementById('btnResetTarget')?.addEventListener('click', resetTargetSection);
 }
 
 function gradeButtonsHtml(emIdx) {
