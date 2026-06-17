@@ -952,6 +952,7 @@ function updatePoolCount() {
   if (filtering) text = `${visible} shown · ${text}`;
   document.getElementById('poolCount').textContent = text;
   updateColorBonusReach();
+  updateColorTargetSummary();
 }
 
 document.addEventListener('click', e => {
