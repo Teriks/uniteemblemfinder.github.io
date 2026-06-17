@@ -1,0 +1,20 @@
+# Installed deps & build intermediates
+node_modules/
+build/
+
+# Built single-file output at the repo root. The tracked, deployed copy is
+# repo/uniteemblemfinder.github.io/index.html (the leading slash anchors this
+# to the repo root so it does NOT match the deployed copy under repo/).
+/index.html
+
+# Scratch
+__probe*
+__verify*
+
+# Fetched / generated raw assets (kept on disk; regenerate with `npm run fetch`,
+# which runs fetch-unitedb.mjs, parse-emblems.mjs and fetch-icons.mjs).
+icons/
+emblems_data.json
+emblem_sets_data.json
+emblems_source.json
+unitedb_page.html

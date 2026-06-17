@@ -1,0 +1,19 @@
+{
+  "name": "unite-emblem-optimizer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-file Pokémon UNITE emblem optimizer — esbuild build.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "data": "node prepare-data.mjs",
+    "fetch": "node fetch-unitedb.mjs && node parse-emblems.mjs && node fetch-icons.mjs",
+    "fetch:source": "node fetch-unitedb.mjs",
+    "fetch:data": "node parse-emblems.mjs",
+    "fetch:icons": "node fetch-icons.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}
