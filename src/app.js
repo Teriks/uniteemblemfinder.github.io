@@ -480,22 +480,10 @@ function showSearchUI(active) {
   const overlay = document.getElementById('optimizeOverlay');
   if (overlay) overlay.hidden = !active;
   document.body.style.cursor = active ? 'wait' : '';
-  ['progressBar', 'progressBarFab'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('active', active);
-  });
   const btns = [document.getElementById('btnOptimize'), document.getElementById('btnOptimizeFab')];
   btns.forEach(b => { if (b) b.disabled = active; });
-  ['btnCancelOptimize', 'btnCancelOptimizeFab', 'btnCancelOptimizeOverlay'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    if (id === 'btnCancelOptimizeOverlay') {
-      el.disabled = !active;
-    } else {
-      el.classList.toggle('d-none', !active);
-      el.disabled = false;
-    }
-  });
+  const cancelBtn = document.getElementById('btnCancelOptimizeOverlay');
+  if (cancelBtn) cancelBtn.disabled = !active;
   if (!active) { searchStartTime = 0; searchEtaSmoothed = null; setSearchProgress(0, ''); }
 }
 
@@ -797,9 +785,7 @@ function initUI() {
   updateSearchEffortHint();
   document.getElementById('btnOptimize').onclick = runOptimize;
   document.getElementById('btnOptimizeFab').onclick = runOptimize;
-  ['btnCancelOptimize', 'btnCancelOptimizeFab', 'btnCancelOptimizeOverlay'].forEach(id => {
-    document.getElementById(id)?.addEventListener('click', requestOptimizeCancel);
-  });
+  document.getElementById('btnCancelOptimizeOverlay')?.addEventListener('click', requestOptimizeCancel);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && optimizeRunning) requestOptimizeCancel();
   });
